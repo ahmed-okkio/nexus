@@ -1,6 +1,7 @@
 import { google } from "@ai-sdk/google";
 import { streamText } from "ai";
 import { db } from "@/lib/db";
+import { createNote, createNotes, getNotes } from "@/lib/tools/notes";
 
 export const maxDuration = 30;
 
@@ -36,8 +37,13 @@ export async function POST(req: Request) {
         },
       });
     },
+    maxSteps: 5,
     // Tools will be registered here by Groovster and Okkio
-    tools: {},
+    tools: {
+      createNote,
+      createNotes,
+      getNotes,
+    },
   });
 
   return result.toDataStreamResponse();
