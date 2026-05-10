@@ -1,31 +1,34 @@
-import { tool } from 'ai';
 import { z } from 'zod';
 import { db } from '@/lib/db';
 
-export const createNote = tool({
+const createNoteSchema = z.object({
+  content: z.string().describe('The content of the note'),
+});
+
+const createNotesSchema = z.object({
+  notes: z.array(z.string()).describe('An array of note contents'),
+});
+
+export const createNote = {
   description: 'Create a single new note',
-  parameters: z.object({
-    content: z.string().describe('The content of the note'),
-  }),
-  execute: async ({ content }) => {
+  inputSchema: createNoteSchema,
+  execute: async (params: { content: string }) => {
     const note = await db.note.create({
-      data: { content },
+      data: { content: params.content },
     });
     return {
       success: true,
       note,
     };
   },
-});
+};
 
-export const createNotes = tool({
+export const createNotes = {
   description: 'Create multiple new notes at once',
-  parameters: z.object({
-    notes: z.array(z.string()).describe('An array of note contents'),
-  }),
-  execute: async ({ notes }) => {
+  inputSchema: createNotesSchema,
+  execute: async (params: { notes: string[] }) => {
     const createdNotes = await Promise.all(
-      notes.map((content) => db.note.create({ data: { content } }))
+      params.notes.map((content) => db.note.create({ data: { content } }))
     );
     return {
       success: true,
@@ -33,11 +36,11 @@ export const createNotes = tool({
       notes: createdNotes,
     };
   },
-});
+};
 
-export const getNotes = tool({
+export const getNotes = {
   description: 'Get all notes',
-  parameters: z.object({}),
+  inputSchema: z.object({}),
   execute: async () => {
     const notes = await db.note.findMany({
       orderBy: { createdAt: 'desc' },
@@ -47,4 +50,4 @@ export const getNotes = tool({
       notes,
     };
   },
-});
+};
