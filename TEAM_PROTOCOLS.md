@@ -9,3 +9,4 @@ This file is the single source of truth for the Nexus AI Assistant project rules
 1. **Vertical Slices:** Always verify which domain your task falls under before modifying code.
 2. **Database:** Use the singleton Prisma client (`src/lib/db.ts`).
 3. **AI Integration:** Shared `Message` model and `/api/chat` route.
+4. **Workflow:** No direct commits to `main`. Use branches for all features and open a Pull Request for review before merging.
