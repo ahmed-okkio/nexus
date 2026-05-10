@@ -1,21 +1,12 @@
 "use client";
 
-// TODO: Groovster - Update useChat import from newer ai/react version
-// import { useChat } from "ai/react";
+import { useChat } from "ai/react";
 import { Send, User, Bot } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useEffect, useRef } from "react";
 
 export function ChatInterface() {
-  // TODO: useChat hook needs to be restored when ai/react is available
-  // const { messages, input, handleInputChange, handleSubmit, isLoading } = useChat();
-  
-  // Placeholder implementation
-  const messages: any[] = [];
-  const input = "";
-  const isLoading = false;
-  const handleInputChange = () => {};
-  const handleSubmit = () => {};
+  const { messages, input, handleInputChange, handleSubmit, isLoading } = useChat();
   
   const scrollRef = useRef<HTMLDivElement>(null);
 
