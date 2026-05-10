@@ -1,6 +1,8 @@
 # Team Protocols - Nexus Project
 This file is the single source of truth for the Nexus AI Assistant project rules.
 
+**Project Context:** See `HACKATHON_MISSION.md` for project scope, requirements, and judging criteria.
+
 ## Team Responsibilities (Vertical Slice)
 - **Groovster (Notes Domain):** Owns `Note` model, `notes.ts` tools, `NotesList` component, "Note to Task" logic.
 - **Okkio (Tasks Domain):** Owns `Task` model, `tasks.ts` tools, `TasksList` component, "Smart Reminders" logic.
