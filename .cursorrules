@@ -1,0 +1,23 @@
+# Project Rules (Agents)
+
+This is a collaborative vertical-slice project for the LOS Hackathon.
+
+## Vertical Slices
+- **Notes Domain (Groovster):**
+  - Model: `Note`
+  - Logic: `src/lib/tools/notes.ts`
+  - UI: `src/components/notes-list.tsx`
+  - Refer to `GROOVSTER.md` for full specs.
+
+- **Tasks Domain (Okkio):**
+  - Model: `Task`
+  - Logic: `src/lib/tools/tasks.ts`
+  - UI: `src/components/tasks-list.tsx`
+  - Refer to `OKKIO.md` for full specs.
+
+## Shared Infrastructure
+- API: `src/app/api/chat/route.ts`
+- UI: `src/components/chat-interface.tsx`
+- DB: `src/lib/db.ts`
+
+Follow the role-specific instructions in `GROOVSTER.md` and `OKKIO.md` to avoid domain overlap.
