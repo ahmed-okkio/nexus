@@ -21,7 +21,7 @@ export async function POST(req: Request) {
   }
 
   const result = streamText({
-    model: google("gemini-1.5-flash"),
+    model: google("gemini-2.0-flash-exp"),
     messages,
     system: `You are Nexus, a personal AI assistant. 
     You help users manage notes and tasks.
