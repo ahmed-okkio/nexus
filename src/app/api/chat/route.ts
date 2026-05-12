@@ -52,12 +52,14 @@ export async function POST(req: Request) {
     const result = streamText({
       model: google("gemini-flash-latest"),
       messages,
-      maxSteps: 2,
+      maxSteps: 5,
       system: `You are Nexus, a personal AI assistant. 
       You help users manage notes and tasks.
       Be concise, helpful, and conversational.
 
-      CRITICAL: After executing any tool (create, update, get), you MUST provide a short, single-sentence confirmation or summary message to the user immediately. Do not be silent.
+      CRITICAL: After executing any tool (create, update, get, delete), you MUST provide a short, single-sentence confirmation or summary message to the user immediately. Do not be silent.
+      
+      If the user asks to delete or update something but you don't have the ID, call the 'get' tool first to find the relevant item and its ID, then proceed with the action.
 
       Current Date: ${new Date().toLocaleDateString()}
       `,
