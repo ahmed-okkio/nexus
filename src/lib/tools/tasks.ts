@@ -2,14 +2,26 @@ import { tool } from 'ai';
 import { z } from 'zod';
 import { db } from '@/lib/db';
 
-export const createTask = tool({
+const createTaskSchema = z.object({
+  title: z.string().describe('The task name or title (what the task is about)'),
+  description: z.string().optional().describe('Optional detailed description or notes'),
+  dueDate: z.string().optional().describe('Optional due date in ISO format (YYYY-MM-DD)'),
+});
+
+const getTasksSchema = z.object({
+  status: z.enum(['pending', 'completed']).optional().describe('Filter by task status'),
+});
+
+const toggleTaskSchema = z.object({
+  id: z.string().describe('The task ID'),
+  status: z.enum(['pending', 'completed']).describe('The new status'),
+});
+
+export const createTask = {
   description: 'Create a new task with an optional due date and description',
-  parameters: z.object({
-    title: z.string().describe('The title of the task'),
-    description: z.string().optional().describe('Optional detailed description of the task'),
-    dueDate: z.string().optional().describe('Optional due date in ISO format (YYYY-MM-DD)'),
-  }),
-  execute: async ({ title, description, dueDate }) => {
+  inputSchema: createTaskSchema,
+  execute: async (params: { title: string; description?: string; dueDate?: string }) => {
+    console.log("Creating task with params:", params);
     const task = await db.task.create({
       data: {
         title,
@@ -125,7 +137,13 @@ export const getSmartReminders = tool({
       return daysUntilDue <= 1 && daysUntilDue >= 0;
     });
 
-    const reminders: any[] = [];
+    const reminders: Array<{
+      type: string;
+      priority: string;
+      message: string;
+      tasks?: typeof pendingTasks;
+      count?: number;
+    }> = [];
 
     if (overdue.length > 0) {
       reminders.push({

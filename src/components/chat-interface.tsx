@@ -1,10 +1,41 @@
 "use client";
 
 import { useChat } from "@ai-sdk/react";
-import { DefaultChatTransport } from "ai";
+import { DefaultChatTransport, getToolName, isToolUIPart } from "ai";
 import { Send, User, Bot } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useEffect, useRef, useState } from "react";
+
+const TOOL_RESULT_MESSAGES: Record<string, string> = {
+  createNote: "Note created.",
+  createNotes: "Notes created.",
+  getNotes: "Notes loaded.",
+  createTask: "Task created.",
+  getTasks: "Tasks loaded.",
+  toggleTask: "Task updated.",
+  getDailyBriefing: "Daily briefing loaded.",
+  getSmartReminders: "Reminders loaded.",
+};
+
+function formatToolResultMessage(toolName: string) {
+  const knownMessage = TOOL_RESULT_MESSAGES[toolName];
+  if (knownMessage) return knownMessage;
+
+  const words = toolName
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .toLowerCase()
+    .split(" ");
+  const [verb, ...subjectWords] = words;
+  const subject = subjectWords.join(" ") || "action";
+  const label = subject.charAt(0).toUpperCase() + subject.slice(1);
+
+  if (["create", "add"].includes(verb)) return `${label} created.`;
+  if (["delete", "remove"].includes(verb)) return `${label} deleted.`;
+  if (["update", "edit", "toggle"].includes(verb)) return `${label} updated.`;
+  if (["get", "list", "fetch", "search"].includes(verb)) return `${label} loaded.`;
+
+  return `${label} completed.`;
+}
 
 export function ChatInterface() {
   const [inputValue, setInputValue] = useState("");
@@ -56,9 +87,6 @@ export function ChatInterface() {
           </div>
         )}
         {messages.map((m) => {
-          const hasVisibleContent = (m.content && m.content.trim().length > 0) || 
-                                   (m.parts && m.parts.some(p => p.type === 'text' || p.type === 'tool-call'));
-          
           return (
             <div
               key={m.id}
@@ -83,36 +111,49 @@ export function ChatInterface() {
                     : "bg-zinc-100 text-zinc-800 rounded-tl-none"
                 )}
               >
-                {m.parts && m.parts.length > 0 ? (
+                {m.parts.length > 0 ? (
                   <div className="space-y-2">
                     {m.parts.map((part, i) => {
                       if (part.type === "text") return <div key={i}>{part.text}</div>;
-                      if (part.type === "tool-call") {
+
+                      if (isToolUIPart(part)) {
+                        const toolName = getToolName(part);
+
+                        if (part.state === "output-available") {
+                          return (
+                            <div key={i} className="text-xs text-gray-500 italic">
+                              {formatToolResultMessage(toolName)}
+                            </div>
+                          );
+                        }
+
+                        if (part.state === "output-error") {
+                          return (
+                            <div key={i} className="text-xs text-red-500 italic">
+                              Tool failed: {part.errorText}
+                            </div>
+                          );
+                        }
+
                         return (
                           <div key={i} className="text-xs text-blue-500 italic flex items-center gap-1">
                             <Bot size={12} className="animate-spin" />
-                            Working on: {part.toolName}...
+                            Working on: {toolName}...
                           </div>
                         );
                       }
-                      if (part.type === "tool-result") {
-                        return (
-                          <div key={i} className="text-xs text-gray-500 italic">
-                            Tool output received.
-                          </div>
-                        );
-                      }
+
                       return null;
                     })}
                   </div>
                 ) : (
-                  <span>{m.content || (m.role === 'assistant' ? '...' : '')}</span>
+                  <span>{m.role === 'assistant' ? '...' : ''}</span>
                 )}
               </div>
             </div>
           );
         })}
-        {isLoading && !messages.some(m => m.role === 'assistant' && !m.content && m.parts?.some(p => p.type === 'tool-call')) && (
+        {isLoading && !messages.some(m => m.role === 'assistant' && m.parts.some(p => isToolUIPart(p) && p.state !== 'output-available')) && (
           <div className="flex items-center gap-2 text-zinc-400 text-xs italic">
             <Bot size={14} className="animate-pulse" />
             Nexus is thinking...
