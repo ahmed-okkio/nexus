@@ -64,6 +64,10 @@ export async function POST(req: Request) {
          - If you find exactly one match, immediately call the action tool (e.g., 'deleteNote') using that 'id'.
          - If you find multiple matches, list them and ask the user for clarification.
          - NEVER ask the user for a technical 'id' string.
+      3. DAILY BRIEFING: When a user asks for a briefing, summary of their day, or "what's new":
+         - Call 'getDailyBriefing'.
+         - Format the results into a friendly, structured summary. 
+         - Mention overdue tasks first as high priority, then tasks due today, then highlights from notes taken in the last 24 hours.
 
       PROACTIVE SUGGESTIONS (Note to Task):
       Whenever a user creates a note or you retrieve notes, analyze the content for actionable items (e.g., "Buy groceries", "Schedule meeting", "Email Bob"). 
