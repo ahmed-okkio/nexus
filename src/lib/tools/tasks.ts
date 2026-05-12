@@ -1,4 +1,3 @@
-import { tool } from 'ai';
 import { z } from 'zod';
 import { db } from '@/lib/db';
 
@@ -24,9 +23,9 @@ export const createTask = {
     console.log("Creating task with params:", params);
     const task = await db.task.create({
       data: {
-        title,
-        description,
-        dueDate: dueDate ? new Date(dueDate) : undefined,
+        title: params.title,
+        description: params.description,
+        dueDate: params.dueDate ? new Date(params.dueDate) : undefined,
       },
     });
     return {
@@ -34,16 +33,14 @@ export const createTask = {
       task,
     };
   },
-});
+};
 
-export const getTasks = tool({
+export const getTasks = {
   description: 'Get all tasks, ordered by creation date',
-  parameters: z.object({
-    status: z.enum(['pending', 'completed']).optional().describe('Filter by task status'),
-  }),
-  execute: async ({ status }) => {
+  inputSchema: getTasksSchema,
+  execute: async (params: { status?: 'pending' | 'completed' }) => {
     const tasks = await db.task.findMany({
-      where: status ? { status } : undefined,
+      where: params.status ? { status: params.status } : undefined,
       orderBy: { createdAt: 'desc' },
     });
     return {
@@ -52,29 +49,26 @@ export const getTasks = tool({
       count: tasks.length,
     };
   },
-});
+};
 
-export const toggleTask = tool({
+export const toggleTask = {
   description: 'Update task status (mark as completed or reopen)',
-  parameters: z.object({
-    id: z.string().describe('The task ID'),
-    status: z.enum(['pending', 'completed']).describe('The new status'),
-  }),
-  execute: async ({ id, status }) => {
+  inputSchema: toggleTaskSchema,
+  execute: async (params: { id: string; status: 'pending' | 'completed' }) => {
     const task = await db.task.update({
-      where: { id },
-      data: { status },
+      where: { id: params.id },
+      data: { status: params.status },
     });
     return {
       success: true,
       task,
     };
   },
-});
+};
 
-export const getDailyBriefing = tool({
+export const getDailyBriefing = {
   description: 'Get a summary of tasks and notes for the last 24 hours to provide a daily briefing',
-  parameters: z.object({}),
+  inputSchema: z.object({}),
   execute: async () => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -116,11 +110,11 @@ export const getDailyBriefing = tool({
       },
     };
   },
-});
+};
 
-export const getSmartReminders = tool({
+export const getSmartReminders = {
   description: 'Get intelligent reminders for overdue tasks and high-priority items',
-  parameters: z.object({}),
+  inputSchema: z.object({}),
   execute: async () => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -179,4 +173,4 @@ export const getSmartReminders = tool({
       totalPending: pendingTasks.length,
     };
   },
-});
+};
