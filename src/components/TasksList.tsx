@@ -14,24 +14,29 @@ export function TasksList() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const fetchTasks = async () => {
+    try {
+      const response = await fetch('/api/tasks');
+      if (!response.ok) throw new Error('Failed to fetch tasks');
+      const data = await response.json();
+      setTasks(data.tasks || []);
+    } catch (error) {
+      console.error('Error fetching tasks:', error);
+      setTasks([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    const fetchTasks = async () => {
-      try {
-        // In a real app, this would be an API call
-        // For now, we're fetching from database via a route
-        const response = await fetch('/api/tasks');
-        if (!response.ok) throw new Error('Failed to fetch tasks');
-        const data = await response.json();
-        setTasks(data.tasks || []);
-      } catch (error) {
-        console.error('Error fetching tasks:', error);
-        setTasks([]);
-      } finally {
-        setLoading(false);
-      }
+    fetchTasks();
+
+    const handleUpdate = () => {
+      fetchTasks();
     };
 
-    fetchTasks();
+    window.addEventListener('tasks-updated', handleUpdate);
+    return () => window.removeEventListener('tasks-updated', handleUpdate);
   }, []);
 
   const handleToggleTask = async (id: string, currentStatus: string) => {

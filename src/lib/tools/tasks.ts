@@ -20,6 +20,7 @@ export const createTask = {
   description: 'Create a new task with an optional due date and description',
   inputSchema: createTaskSchema,
   execute: async (params: { title: string; description?: string; dueDate?: string }) => {
+    console.log("Creating task with params:", params);
     const task = await db.task.create({
       data: {
         title: params.title,
@@ -27,6 +28,7 @@ export const createTask = {
         dueDate: params.dueDate ? new Date(params.dueDate) : undefined,
       },
     });
+    console.log("Task created successfully:", task);
     return {
       success: true,
       task,
