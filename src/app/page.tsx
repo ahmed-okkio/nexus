@@ -1,5 +1,6 @@
 import { ChatInterface } from "@/components/chat-interface";
-import { TasksList } from "@/components/TasksList";
+import { TasksList } from "@/components/tasks-list";
+import { NotesList } from "@/components/notes-list";
 
 export default function Home() {
   return (
@@ -18,20 +19,25 @@ export default function Home() {
 
       {/* Main content */}
       <main className="flex-1 max-w-7xl mx-auto w-full px-6 py-8">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
           {/* Chat - Takes 2 cols on large screens */}
           <div className="lg:col-span-2">
-            <div className="bg-white dark:bg-zinc-950 rounded-lg shadow-sm border border-zinc-200 dark:border-zinc-800 p-4">
+            <div className="bg-white dark:bg-zinc-950 rounded-lg shadow-sm border border-zinc-200 dark:border-zinc-800 overflow-hidden">
               <ChatInterface />
             </div>
           </div>
 
           {/* Sidebar - Tasks and Notes */}
-          <div className="space-y-6">
+          <div className="lg:col-span-2 space-y-6">
             {/* Tasks */}
             <div className="bg-white dark:bg-zinc-950 rounded-lg shadow-sm border border-zinc-200 dark:border-zinc-800 p-4">
               <h2 className="text-lg font-semibold mb-4 text-zinc-900 dark:text-white">Tasks</h2>
               <TasksList />
+            </div>
+
+            {/* Notes */}
+            <div className="bg-white dark:bg-zinc-950 rounded-lg shadow-sm border border-zinc-200 dark:border-zinc-800 overflow-hidden">
+              <NotesList />
             </div>
 
             {/* Quick Actions */}

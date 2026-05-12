@@ -1,7 +1,7 @@
 import { google } from "@ai-sdk/google";
 import { streamText, convertToModelMessages, UIMessage } from "ai";
 import { db } from "@/lib/db";
-import { createNote, createNotes, getNotes } from "@/lib/tools/notes";
+import { createNote, createNotes, getNotes, deleteNote, searchNotes } from "@/lib/tools/notes";
 import { createTask, getTasks, toggleTask, getDailyBriefing, getSmartReminders } from "@/lib/tools/tasks";
 
 export const maxDuration = 30;
@@ -52,12 +52,22 @@ export async function POST(req: Request) {
     const result = streamText({
       model: google("gemini-flash-latest"),
       messages,
-      maxSteps: 2,
-      system: `You are Nexus, a personal AI assistant. 
+      maxSteps: 5,
+      system: `You are Nexus, a personal AI assistant for the LOS Hackathon. 
       You help users manage notes and tasks.
       Be concise, helpful, and conversational.
 
-      CRITICAL: After executing any tool (create, update, get), you MUST provide a short, single-sentence confirmation or summary message to the user immediately. Do not be silent.
+      TOOL PROTOCOL:
+      1. CRITICAL: After executing any tool (create, update, get, delete), you MUST provide a short, single-sentence confirmation or summary message to the user immediately. Do not be silent.
+      2. DELETION/UPDATE: If the user asks to delete or update something but you don't have the unique 'id':
+         - First, call 'searchNotes' (for notes) or 'getTasks' (for tasks) to find the relevant item.
+         - If you find exactly one match, immediately call the action tool (e.g., 'deleteNote') using that 'id'.
+         - If you find multiple matches, list them and ask the user for clarification.
+         - NEVER ask the user for a technical 'id' string.
+
+      PROACTIVE SUGGESTIONS (Note to Task):
+      Whenever a user creates a note or you retrieve notes, analyze the content for actionable items (e.g., "Buy groceries", "Schedule meeting", "Email Bob"). 
+      If you find actionable items that aren't already tasks, proactively suggest creating a task for them. Ask the user for confirmation before calling 'createTask'.
 
       Current Date: ${new Date().toLocaleDateString()}
       `,
@@ -87,6 +97,8 @@ export async function POST(req: Request) {
         createNote,
         createNotes,
         getNotes,
+        searchNotes,
+        deleteNote,
         createTask,
         getTasks,
         toggleTask,
