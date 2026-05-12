@@ -47,19 +47,22 @@ export async function POST(req: Request) {
       }
     }
 
+    console.log("Chat API route hit. Processing request...");
+
     const result = streamText({
       model: google("gemini-flash-latest"),
       messages,
-      maxSteps: 5,
+      maxSteps: 2,
       system: `You are Nexus, a personal AI assistant. 
       You help users manage notes and tasks.
       Be concise, helpful, and conversational.
 
-      IMPORTANT: Always provide a brief verbal confirmation to the user after you have successfully performed an action (like creating a task, updating a status, or saving a note). For example, say "I've added that task for you" or "Note saved."
+      CRITICAL: After executing any tool (create, update, get), you MUST provide a short, single-sentence confirmation or summary message to the user immediately. Do not be silent.
 
       Current Date: ${new Date().toLocaleDateString()}
       `,
       onFinish: async ({ text }) => {
+        console.log("Stream finished. Text content:", text);
         // Persist assistant message
         try {
           await db.message.create({
@@ -75,6 +78,9 @@ export async function POST(req: Request) {
       onStepFinish: ({ toolCalls, toolResults }) => {
         if (toolCalls && toolCalls.length > 0) {
           console.log("Tools called:", toolCalls.map(tc => tc.toolName).join(", "));
+        }
+        if (toolResults && toolResults.length > 0) {
+          console.log("Tool results received:", toolResults.map(tr => tr.toolName).join(", "));
         }
       },
       tools: {

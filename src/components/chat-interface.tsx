@@ -59,8 +59,6 @@ export function ChatInterface() {
           const hasVisibleContent = (m.content && m.content.trim().length > 0) || 
                                    (m.parts && m.parts.some(p => p.type === 'text' || p.type === 'tool-call'));
           
-          if (m.role === 'assistant' && !hasVisibleContent) return null;
-
           return (
             <div
               key={m.id}
@@ -97,11 +95,18 @@ export function ChatInterface() {
                           </div>
                         );
                       }
+                      if (part.type === "tool-result") {
+                        return (
+                          <div key={i} className="text-xs text-gray-500 italic">
+                            Tool output received.
+                          </div>
+                        );
+                      }
                       return null;
                     })}
                   </div>
                 ) : (
-                  <span>{m.content}</span>
+                  <span>{m.content || (m.role === 'assistant' ? '...' : '')}</span>
                 )}
               </div>
             </div>
