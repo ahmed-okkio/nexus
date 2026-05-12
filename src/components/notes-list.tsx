@@ -11,18 +11,31 @@ interface Note {
   updatedAt: Date;
 }
 
-import useSWR, { useSWRConfig } from "swr";
-
-const fetcher = (url: string) => fetch(url).then((res) => res.json());
-
 export function NotesList() {
-  const { mutate } = useSWRConfig();
-  const { data, error, isLoading } = useSWR("/api/notes", fetcher);
-  const notes = data?.notes || [];
-  
+  const [notes, setNotes] = useState<Note[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [newNoteContent, setNewNoteContent] = useState("");
   const [isAdding, setIsAdding] = useState(false);
-  const [localError, setInternalError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetchNotes();
+  }, []);
+
+  const fetchNotes = async () => {
+    try {
+      setIsLoading(true);
+      const response = await fetch("/api/notes");
+      if (!response.ok) throw new Error("Failed to fetch notes");
+      const data = await response.json();
+      setNotes(data.notes || []);
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load notes");
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handleAddNote = async () => {
     if (!newNoteContent.trim()) return;
@@ -37,9 +50,9 @@ export function NotesList() {
 
       if (!response.ok) throw new Error("Failed to create note");
       setNewNoteContent("");
-      mutate("/api/notes");
+      await fetchNotes();
     } catch (err) {
-      setInternalError(err instanceof Error ? err.message : "Failed to create note");
+      setError(err instanceof Error ? err.message : "Failed to create note");
     } finally {
       setIsAdding(false);
     }
@@ -52,9 +65,9 @@ export function NotesList() {
       });
 
       if (!response.ok) throw new Error("Failed to delete note");
-      mutate("/api/notes");
+      await fetchNotes();
     } catch (err) {
-      setInternalError(err instanceof Error ? err.message : "Failed to delete note");
+      setError(err instanceof Error ? err.message : "Failed to delete note");
     }
   };
 

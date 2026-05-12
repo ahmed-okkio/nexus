@@ -5,7 +5,6 @@ import { DefaultChatTransport, getToolName, isToolUIPart } from "ai";
 import { Send, User, Bot } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useEffect, useRef, useState } from "react";
-import { mutate } from "swr";
 
 const TOOL_RESULT_MESSAGES: Record<string, string> = {
   createNote: "Note created.",
@@ -43,19 +42,10 @@ export function ChatInterface() {
   const { messages, sendMessage, status } = useChat({
     transport: new DefaultChatTransport({ api: "/api/chat" }),
     onToolCall: ({ toolCall }) => {
-      console.log('Tool call detected:', toolCall.toolName);
-      
-      // Update Notes if a note-related tool is called
-      if (toolCall.toolName.toLowerCase().includes('note')) {
-        mutate('/api/notes');
+      if (['createTask', 'toggleTask'].includes(toolCall.toolName)) {
+        console.log('Tool call completed:', toolCall.toolName);
+        window.dispatchEvent(new CustomEvent("tasks-updated"));
       }
-      
-      // Update Tasks if a task-related tool is called
-      if (toolCall.toolName.toLowerCase().includes('task')) {
-        mutate('/api/tasks');
-      }
-
-      window.dispatchEvent(new CustomEvent("tasks-updated"));
     }
   });
   
