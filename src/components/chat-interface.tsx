@@ -1,12 +1,15 @@
 "use client";
 
-import { useChat } from "ai/react";
+import { useChat } from "@ai-sdk/react";
 import { Send, User, Bot } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useEffect, useRef } from "react";
 
 export function ChatInterface() {
-  const { messages, input, handleInputChange, handleSubmit, isLoading } = useChat();
+  const { messages, input, handleInputChange, handleSubmit, isLoading, stop } = useChat({
+    api: "/api/chat",
+  });
+  
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -28,7 +31,7 @@ export function ChatInterface() {
             <p>How can I help you today?</p>
           </div>
         )}
-        {messages.map((m) => (
+        {messages.map((m: any) => (
           <div
             key={m.id}
             className={cn(
@@ -64,7 +67,10 @@ export function ChatInterface() {
         )}
       </div>
 
-      <form onSubmit={handleSubmit} className="p-4 border-t bg-zinc-50 flex gap-2">
+      <form 
+        onSubmit={handleSubmit} 
+        className="p-4 border-t bg-zinc-50 flex gap-2"
+      >
         <input
           value={input}
           onChange={handleInputChange}
@@ -73,7 +79,7 @@ export function ChatInterface() {
         />
         <button
           type="submit"
-          disabled={isLoading || !input}
+          disabled={isLoading}
           className="p-2 bg-zinc-900 text-white rounded-full hover:bg-zinc-800 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <Send size={18} />

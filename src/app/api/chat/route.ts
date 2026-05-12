@@ -2,6 +2,7 @@ import { google } from "@ai-sdk/google";
 import { streamText } from "ai";
 import { db } from "@/lib/db";
 import { createNote, createNotes, getNotes } from "@/lib/tools/notes";
+import { createTask, getTasks, toggleTask, getDailyBriefing, getSmartReminders } from "@/lib/tools/tasks";
 
 export const maxDuration = 30;
 
@@ -37,14 +38,17 @@ export async function POST(req: Request) {
         },
       });
     },
-    maxSteps: 5,
-    // Tools will be registered here by Groovster and Okkio
     tools: {
       createNote,
       createNotes,
       getNotes,
+      createTask,
+      getTasks,
+      toggleTask,
+      getDailyBriefing,
+      getSmartReminders,
     },
   });
 
-  return result.toDataStreamResponse();
+  return result.toTextStreamResponse();
 }
