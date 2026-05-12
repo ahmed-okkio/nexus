@@ -1,4 +1,4 @@
-import { createNote, createNotes, getNotes } from "../src/lib/tools/notes";
+import { createNote, createNotes, getNotes, searchNotes } from "../src/lib/tools/notes";
 import { db } from "../src/lib/db";
 
 async function runTests() {
@@ -7,8 +7,9 @@ async function runTests() {
   try {
     // 1. Test createNote
     console.log("\n--- Testing createNote ---");
+    const uniqueContent = `Test note for search ${Math.random()}`;
     const singleNoteResult = await (createNote.execute as any)({ 
-      content: "Test single note from script" 
+      content: uniqueContent
     });
     console.log("Result:", singleNoteResult.success ? "✅ Success" : "❌ Failed");
     if (singleNoteResult.note) {
@@ -23,7 +24,23 @@ async function runTests() {
     console.log("Result:", bulkNotesResult.success ? "✅ Success" : "❌ Failed");
     console.log("Count:", bulkNotesResult.count);
 
-    // 3. Test getNotes
+    // 3. Test searchNotes
+    console.log("\n--- Testing searchNotes ---");
+    const searchResult = await (searchNotes.execute as any)({
+      query: "uniqueContent" // Wait, I used uniqueContent variable, but searching for string literal "uniqueContent" won't work unless I pass the value
+    });
+    // Let's search for a part of the unique content
+    const searchKeyword = uniqueContent.split(" ")[0]; // "Test"
+    const searchResult2 = await (searchNotes.execute as any)({
+      query: searchKeyword
+    });
+    console.log(`Searching for: "${searchKeyword}"`);
+    console.log("Result:", searchResult2.success ? "✅ Success" : "❌ Failed");
+    console.log("Notes found:", searchResult2.notes.length);
+    const found = searchResult2.notes.some((n: any) => n.content === uniqueContent);
+    console.log("Found our unique note:", found ? "✅ Yes" : "❌ No");
+
+    // 4. Test getNotes
     console.log("\n--- Testing getNotes ---");
     const getNotesResult = await (getNotes.execute as any)({});
     console.log("Result:", getNotesResult.success ? "✅ Success" : "❌ Failed");

@@ -1,34 +1,31 @@
+import { tool } from 'ai';
 import { z } from 'zod';
 import { db } from '@/lib/db';
 
-const createNoteSchema = z.object({
-  content: z.string().describe('The content of the note'),
-});
-
-const createNotesSchema = z.object({
-  notes: z.array(z.string()).describe('An array of note contents'),
-});
-
-export const createNote = {
+export const createNote = tool({
   description: 'Create a single new note',
-  inputSchema: createNoteSchema,
-  execute: async (params: { content: string }) => {
+  parameters: z.object({
+    content: z.string().describe('The content of the note'),
+  }),
+  execute: async ({ content }) => {
     const note = await db.note.create({
-      data: { content: params.content },
+      data: { content },
     });
     return {
       success: true,
       note,
     };
   },
-};
+});
 
-export const createNotes = {
+export const createNotes = tool({
   description: 'Create multiple new notes at once',
-  inputSchema: createNotesSchema,
-  execute: async (params: { notes: string[] }) => {
+  parameters: z.object({
+    notes: z.array(z.string()).describe('An array of note contents'),
+  }),
+  execute: async ({ notes }) => {
     const createdNotes = await Promise.all(
-      params.notes.map((content) => db.note.create({ data: { content } }))
+      notes.map((content) => db.note.create({ data: { content } }))
     );
     return {
       success: true,
@@ -36,11 +33,11 @@ export const createNotes = {
       notes: createdNotes,
     };
   },
-};
+});
 
-export const getNotes = {
+export const getNotes = tool({
   description: 'Get all notes',
-  inputSchema: z.object({}),
+  parameters: z.object({}),
   execute: async () => {
     const notes = await db.note.findMany({
       orderBy: { createdAt: 'desc' },
@@ -50,20 +47,41 @@ export const getNotes = {
       notes,
     };
   },
-};
+});
 
-export const deleteNote = {
-  description: 'Delete a note by its ID',
-  inputSchema: z.object({
-    id: z.string().describe('The ID of the note to delete'),
+export const searchNotes = tool({
+  description: 'Search for notes containing specific text',
+  parameters: z.object({
+    query: z.string().describe('The text to search for in notes'),
   }),
-  execute: async (params: { id: string }) => {
-    await db.note.delete({
-      where: { id: params.id },
+  execute: async ({ query }) => {
+    const notes = await db.note.findMany({
+      where: {
+        content: {
+          contains: query,
+        },
+      },
+      orderBy: { createdAt: 'desc' },
     });
     return {
       success: true,
-      message: `Note ${params.id} deleted successfully`,
+      notes,
     };
   },
-};
+});
+
+export const deleteNote = tool({
+  description: 'Delete a note by its ID',
+  parameters: z.object({
+    id: z.string().describe('The ID of the note to delete'),
+  }),
+  execute: async ({ id }) => {
+    await db.note.delete({
+      where: { id },
+    });
+    return {
+      success: true,
+      message: `Note ${id} deleted successfully`,
+    };
+  },
+});

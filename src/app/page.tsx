@@ -1,5 +1,5 @@
 import { ChatInterface } from "@/components/chat-interface";
-import { TasksList } from "@/components/TasksList";
+import { TasksList } from "@/components/tasks-list";
 import { NotesList } from "@/components/notes-list";
 
 export default function Home() {

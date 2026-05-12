@@ -1,47 +1,37 @@
+import { tool } from 'ai';
 import { z } from 'zod';
 import { db } from '@/lib/db';
 
-const createTaskSchema = z.object({
-  title: z.string().describe('The title of the task'),
-  description: z.string().optional().describe('Optional detailed description of the task'),
-  dueDate: z.string().optional().describe('Optional due date in ISO format (YYYY-MM-DD)'),
-});
-
-const getTasksSchema = z.object({
-  status: z.enum(['pending', 'completed']).optional().describe('Filter by task status'),
-});
-
-const toggleTaskSchema = z.object({
-  id: z.string().describe('The task ID'),
-  status: z.enum(['pending', 'completed']).describe('The new status'),
-});
-
-export const createTask = {
+export const createTask = tool({
   description: 'Create a new task with an optional due date and description',
-  inputSchema: createTaskSchema,
-  execute: async (params: { title: string; description?: string; dueDate?: string }) => {
-    console.log("Creating task with params:", params);
+  parameters: z.object({
+    title: z.string().describe('The title of the task'),
+    description: z.string().optional().describe('Optional detailed description of the task'),
+    dueDate: z.string().optional().describe('Optional due date in ISO format (YYYY-MM-DD)'),
+  }),
+  execute: async ({ title, description, dueDate }) => {
     const task = await db.task.create({
       data: {
-        title: params.title,
-        description: params.description,
-        dueDate: params.dueDate ? new Date(params.dueDate) : undefined,
+        title,
+        description,
+        dueDate: dueDate ? new Date(dueDate) : undefined,
       },
     });
-    console.log("Task created successfully:", task);
     return {
       success: true,
       task,
     };
   },
-};
+});
 
-export const getTasks = {
+export const getTasks = tool({
   description: 'Get all tasks, ordered by creation date',
-  inputSchema: getTasksSchema,
-  execute: async (params: { status?: 'pending' | 'completed' }) => {
+  parameters: z.object({
+    status: z.enum(['pending', 'completed']).optional().describe('Filter by task status'),
+  }),
+  execute: async ({ status }) => {
     const tasks = await db.task.findMany({
-      where: params.status ? { status: params.status } : undefined,
+      where: status ? { status } : undefined,
       orderBy: { createdAt: 'desc' },
     });
     return {
@@ -50,26 +40,29 @@ export const getTasks = {
       count: tasks.length,
     };
   },
-};
+});
 
-export const toggleTask = {
+export const toggleTask = tool({
   description: 'Update task status (mark as completed or reopen)',
-  inputSchema: toggleTaskSchema,
-  execute: async (params: { id: string; status: 'pending' | 'completed' }) => {
+  parameters: z.object({
+    id: z.string().describe('The task ID'),
+    status: z.enum(['pending', 'completed']).describe('The new status'),
+  }),
+  execute: async ({ id, status }) => {
     const task = await db.task.update({
-      where: { id: params.id },
-      data: { status: params.status },
+      where: { id },
+      data: { status },
     });
     return {
       success: true,
       task,
     };
   },
-};
+});
 
-export const getDailyBriefing = {
+export const getDailyBriefing = tool({
   description: 'Get a summary of tasks for today - pending tasks and overdue items',
-  inputSchema: z.object({}),
+  parameters: z.object({}),
   execute: async () => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -103,11 +96,11 @@ export const getDailyBriefing = {
       },
     };
   },
-};
+});
 
-export const getSmartReminders = {
+export const getSmartReminders = tool({
   description: 'Get intelligent reminders for overdue tasks and high-priority items',
-  inputSchema: z.object({}),
+  parameters: z.object({}),
   execute: async () => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -160,4 +153,4 @@ export const getSmartReminders = {
       totalPending: pendingTasks.length,
     };
   },
-};
+});
