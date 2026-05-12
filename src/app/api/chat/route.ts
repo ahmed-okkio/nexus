@@ -1,7 +1,7 @@
 import { google } from "@ai-sdk/google";
 import { streamText, convertToModelMessages, UIMessage } from "ai";
 import { db } from "@/lib/db";
-import { createNote, createNotes, getNotes } from "@/lib/tools/notes";
+import { createNote, createNotes, getNotes, deleteNote } from "@/lib/tools/notes";
 import { createTask, getTasks, toggleTask, getDailyBriefing, getSmartReminders } from "@/lib/tools/tasks";
 
 export const maxDuration = 30;
@@ -87,6 +87,7 @@ export async function POST(req: Request) {
         createNote,
         createNotes,
         getNotes,
+        deleteNote,
         createTask,
         getTasks,
         toggleTask,

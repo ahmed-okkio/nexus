@@ -51,3 +51,19 @@ export const getNotes = {
     };
   },
 };
+
+export const deleteNote = {
+  description: 'Delete a note by its ID',
+  inputSchema: z.object({
+    id: z.string().describe('The ID of the note to delete'),
+  }),
+  execute: async (params: { id: string }) => {
+    await db.note.delete({
+      where: { id: params.id },
+    });
+    return {
+      success: true,
+      message: `Note ${params.id} deleted successfully`,
+    };
+  },
+};
