@@ -61,7 +61,7 @@ export const toggleTask = tool({
 });
 
 export const getDailyBriefing = tool({
-  description: 'Get a summary of tasks for today - pending tasks and overdue items',
+  description: 'Get a summary of tasks and notes for the last 24 hours to provide a daily briefing',
   parameters: z.object({}),
   execute: async () => {
     const today = new Date();
@@ -69,6 +69,9 @@ export const getDailyBriefing = tool({
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
 
+    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+
+    // Get Tasks
     const tasks = await db.task.findMany({
       where: { status: 'pending' },
       orderBy: { dueDate: 'asc' },
@@ -76,23 +79,28 @@ export const getDailyBriefing = tool({
 
     const overdue = tasks.filter((t) => t.dueDate && t.dueDate < today);
     const dueToday = tasks.filter((t) => t.dueDate && t.dueDate >= today && t.dueDate < tomorrow);
-    const upcoming = tasks.filter((t) => t.dueDate && t.dueDate >= tomorrow);
-    const noDueDate = tasks.filter((t) => !t.dueDate);
+    
+    // Get Recent Notes (Last 24 hours)
+    const recentNotes = await db.note.findMany({
+      where: {
+        createdAt: {
+          gte: twentyFourHoursAgo,
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
 
     return {
       success: true,
       summary: {
-        total: tasks.length,
-        overdue: overdue.length,
-        dueToday: dueToday.length,
-        upcoming: upcoming.length,
-        noDueDate: noDueDate.length,
+        overdueCount: overdue.length,
+        dueTodayCount: dueToday.length,
+        recentNotesCount: recentNotes.length,
       },
-      tasks: {
+      data: {
         overdue,
         dueToday,
-        upcoming: upcoming.slice(0, 5),
-        noDueDate,
+        recentNotes,
       },
     };
   },
