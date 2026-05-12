@@ -10,34 +10,14 @@ interface Task {
   dueDate?: string;
 }
 
+import useSWR, { useSWRConfig } from 'swr';
+
+const fetcher = (url: string) => fetch(url).then((res) => res.json());
+
 export function TasksList() {
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  const fetchTasks = async () => {
-    try {
-      const response = await fetch('/api/tasks');
-      if (!response.ok) throw new Error('Failed to fetch tasks');
-      const data = await response.json();
-      setTasks(data.tasks || []);
-    } catch (error) {
-      console.error('Error fetching tasks:', error);
-      setTasks([]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchTasks();
-
-    const handleUpdate = () => {
-      fetchTasks();
-    };
-
-    window.addEventListener('tasks-updated', handleUpdate);
-    return () => window.removeEventListener('tasks-updated', handleUpdate);
-  }, []);
+  const { mutate } = useSWRConfig();
+  const { data, error, isLoading } = useSWR('/api/tasks', fetcher);
+  const tasks = data?.tasks || [];
 
   const handleToggleTask = async (id: string, currentStatus: string) => {
     const newStatus = currentStatus === 'pending' ? 'completed' : 'pending';
@@ -48,14 +28,13 @@ export function TasksList() {
         body: JSON.stringify({ id, status: newStatus }),
       });
       if (!response.ok) throw new Error('Failed to update task');
-      const updatedTask = await response.json();
-      setTasks(tasks.map(t => (t.id === id ? updatedTask.task : t)));
+      mutate('/api/tasks');
     } catch (error) {
       console.error('Error updating task:', error);
     }
   };
 
-  if (loading) {
+  if (isLoading) {
     return <div className="p-4 text-center text-gray-500">Loading tasks...</div>;
   }
 
