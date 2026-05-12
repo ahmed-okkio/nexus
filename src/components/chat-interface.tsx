@@ -68,7 +68,7 @@ export function ChatInterface() {
       </div>
 
       <form 
-        onSubmit={handleSubmit} 
+        onSubmit={handleSubmit}
         className="p-4 border-t bg-zinc-50 flex gap-2"
       >
         <input
