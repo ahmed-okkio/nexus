@@ -2,9 +2,27 @@
 
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport, getToolName, isToolUIPart } from "ai";
-import { Send, User, Bot } from "lucide-react";
+import { Send, User, Bot, Mic, MicOff } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useEffect, useRef, useState } from "react";
+
+// Speech Recognition Type Definitions
+interface SpeechRecognitionEvent extends Event {
+  results: {
+    [key: number]: {
+      [key: number]: {
+        transcript: string;
+      };
+    };
+  };
+}
+
+declare global {
+  interface Window {
+    SpeechRecognition: any;
+    webkitSpeechRecognition: any;
+  }
+}
 
 const TOOL_RESULT_MESSAGES: Record<string, string> = {
   createNote: "Note created.",
@@ -39,19 +57,67 @@ function formatToolResultMessage(toolName: string) {
 
 export function ChatInterface() {
   const [inputValue, setInputValue] = useState("");
+  const [isListening, setIsListening] = useState(false);
+  const [isSpeechSupported, setIsSpeechSupported] = useState(false);
+  const [mounted, setMounted] = useState(false);
+  const recognitionRef = useRef<any>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
   const { messages, sendMessage, status } = useChat({
     transport: new DefaultChatTransport({ api: "/api/chat" }),
-    onToolCall: ({ toolCall }) => {
-      if (['createTask', 'toggleTask'].includes(toolCall.toolName)) {
-        console.log('Tool call completed:', toolCall.toolName);
-        window.dispatchEvent(new CustomEvent("tasks-updated"));
-      }
-    }
   });
-  
+
   const isLoading = status === "submitted" || status === "streaming";
-  
-  const scrollRef = useRef<HTMLDivElement>(null);
+
+  // Handle updates by watching messages for tool results
+  useEffect(() => {
+    const lastMessage = messages[messages.length - 1];
+    if (!lastMessage || lastMessage.role !== 'assistant') return;
+
+    const hasTaskResult = lastMessage.parts.some(p => 
+      isToolUIPart(p) && p.state === 'output-available' && 
+      ['createTask', 'toggleTask', 'deleteTask'].includes(getToolName(p))
+    );
+    const hasNoteResult = lastMessage.parts.some(p => 
+      isToolUIPart(p) && p.state === 'output-available' && 
+      ['createNote', 'createNotes', 'deleteNote'].includes(getToolName(p))
+    );
+    const hasBriefingResult = lastMessage.parts.some(p => 
+      isToolUIPart(p) && p.state === 'output-available' && 
+      getToolName(p) === 'getDailyBriefing'
+    );
+
+    if (hasTaskResult) window.dispatchEvent(new CustomEvent("tasks-updated"));
+    if (hasNoteResult) window.dispatchEvent(new CustomEvent("notes-updated"));
+    if (hasBriefingResult) window.dispatchEvent(new CustomEvent("show-briefing"));
+  }, [messages]);
+
+  useEffect(() => {
+    setMounted(true);
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (SpeechRecognition) {
+      setIsSpeechSupported(true);
+      const recognition = new SpeechRecognition();
+      recognition.continuous = false;
+      recognition.interimResults = true;
+      recognition.lang = 'en-US';
+
+      recognition.onresult = (event: any) => {
+        let transcript = "";
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          transcript += event.results[i][0].transcript;
+        }
+        setInputValue(transcript);
+      };
+
+      recognition.onend = () => setIsListening(false);
+      recognition.onerror = (event: any) => {
+        console.error("Speech recognition error:", event.error);
+        setIsListening(false);
+      };
+      recognitionRef.current = recognition;
+    }
+  }, []);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -59,19 +125,25 @@ export function ChatInterface() {
     }
   }, [messages]);
 
-  // Handle task updates based on message analysis
-  useEffect(() => {
-    // Left empty intentionally, removing debug logic
-  }, [messages]);
+  const toggleListening = () => {
+    if (isListening) {
+      recognitionRef.current?.stop();
+    } else {
+      recognitionRef.current?.start();
+      setIsListening(true);
+    }
+  };
 
   const onHandleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!inputValue.trim() || isLoading) return;
-
     const text = inputValue;
     setInputValue(""); 
+    if (isListening) recognitionRef.current?.stop();
     await sendMessage({ text });
   };
+
+  if (!mounted) return <div className="h-[600px] w-full border rounded-xl bg-white shadow-sm" />;
 
   return (
     <div className="flex flex-col h-[600px] w-full max-w-2xl border rounded-xl bg-white shadow-sm overflow-hidden">
@@ -115,10 +187,8 @@ export function ChatInterface() {
                   <div className="space-y-2">
                     {m.parts.map((part, i) => {
                       if (part.type === "text") return <div key={i}>{part.text}</div>;
-
                       if (isToolUIPart(part)) {
                         const toolName = getToolName(part);
-
                         if (part.state === "output-available") {
                           return (
                             <div key={i} className="text-xs text-gray-500 italic">
@@ -126,7 +196,6 @@ export function ChatInterface() {
                             </div>
                           );
                         }
-
                         if (part.state === "output-error") {
                           return (
                             <div key={i} className="text-xs text-red-500 italic">
@@ -134,7 +203,6 @@ export function ChatInterface() {
                             </div>
                           );
                         }
-
                         return (
                           <div key={i} className="text-xs text-blue-500 italic flex items-center gap-1">
                             <Bot size={12} className="animate-spin" />
@@ -142,7 +210,6 @@ export function ChatInterface() {
                           </div>
                         );
                       }
-
                       return null;
                     })}
                   </div>
@@ -168,16 +235,36 @@ export function ChatInterface() {
         <input
           value={inputValue}
           onChange={(e) => setInputValue(e.target.value)}
-          placeholder="Ask anything..."
-          className="flex-1 px-4 py-2 border rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900"
+          placeholder={isListening ? "Listening..." : "Ask anything..."}
+          className={cn(
+            "flex-1 px-4 py-2 border rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-zinc-900 transition-all",
+            isListening && "border-blue-500 ring-2 ring-blue-500 bg-blue-50"
+          )}
         />
-        <button
-          type="submit"
-          disabled={isLoading || !inputValue.trim()}
-          className="p-2 bg-zinc-900 text-white rounded-full hover:bg-zinc-800 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          <Send size={18} />
-        </button>
+        <div className="flex gap-2">
+          {isSpeechSupported && (
+            <button
+              type="button"
+              onClick={toggleListening}
+              className={cn(
+                "p-2 rounded-full transition-colors",
+                isListening 
+                  ? "bg-red-500 text-white animate-pulse" 
+                  : "bg-zinc-200 text-zinc-600 hover:bg-zinc-300"
+              )}
+              title={isListening ? "Stop listening" : "Start voice input"}
+            >
+              {isListening ? <MicOff size={18} /> : <Mic size={18} />}
+            </button>
+          )}
+          <button
+            type="submit"
+            disabled={isLoading || !inputValue.trim()}
+            className="p-2 bg-zinc-900 text-white rounded-full hover:bg-zinc-800 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Send size={18} />
+          </button>
+        </div>
       </form>
     </div>
   );

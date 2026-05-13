@@ -2,7 +2,7 @@ import { google } from "@ai-sdk/google";
 import { streamText, convertToModelMessages, stepCountIs, type UIMessage } from "ai";
 import { db } from "@/lib/db";
 import { createNote, createNotes, getNotes, deleteNote, searchNotes } from "@/lib/tools/notes";
-import { createTask, getTasks, toggleTask, getDailyBriefing, getSmartReminders } from "@/lib/tools/tasks";
+import { createTask, getTasks, toggleTask, deleteTask, getDailyBriefing, getSmartReminders } from "@/lib/tools/tasks";
 
 export const maxDuration = 30;
 
@@ -47,7 +47,7 @@ export async function POST(req: Request) {
     console.log("Chat API route hit. Processing request...");
 
     const result = streamText({
-      model: google("gemini-flash-lite-latest"),
+      model: google("gemini-flash-latest"),
       messages,
       stopWhen: stepCountIs(5),
       system: `You are Nexus, a personal AI assistant. 
@@ -97,6 +97,7 @@ export async function POST(req: Request) {
         createTask,
         getTasks,
         toggleTask,
+        deleteTask,
         getDailyBriefing,
         getSmartReminders,
       },

@@ -4,11 +4,13 @@ import { db } from '@/lib/db';
 const createTaskSchema = z.object({
   title: z.string().describe('The task name or title (what the task is about)'),
   description: z.string().optional().describe('Optional detailed description or notes'),
+  priority: z.enum(['low', 'medium', 'high']).optional().describe('Task priority'),
   dueDate: z.string().optional().describe('Optional due date in ISO format (YYYY-MM-DD)'),
 });
 
 const getTasksSchema = z.object({
   status: z.enum(['pending', 'completed']).optional().describe('Filter by task status'),
+  includeDeleted: z.boolean().optional().describe('Whether to include soft-deleted tasks'),
 });
 
 const toggleTaskSchema = z.object({
@@ -16,15 +18,20 @@ const toggleTaskSchema = z.object({
   status: z.enum(['pending', 'completed']).describe('The new status'),
 });
 
+const deleteTaskSchema = z.object({
+  id: z.string().describe('The task ID to delete'),
+});
+
 export const createTask = {
-  description: 'Create a new task with an optional due date and description',
+  description: 'Create a new task with an optional due date, description, and priority',
   inputSchema: createTaskSchema,
-  execute: async (params: { title: string; description?: string; dueDate?: string }) => {
+  execute: async (params: { title: string; description?: string; priority?: 'low' | 'medium' | 'high'; dueDate?: string }) => {
     console.log("Creating task with params:", params);
     const task = await db.task.create({
       data: {
         title: params.title,
         description: params.description,
+        priority: params.priority || 'medium',
         dueDate: params.dueDate ? new Date(params.dueDate) : undefined,
       },
     });
@@ -38,9 +45,12 @@ export const createTask = {
 export const getTasks = {
   description: 'Get all tasks, ordered by creation date',
   inputSchema: getTasksSchema,
-  execute: async (params: { status?: 'pending' | 'completed' }) => {
+  execute: async (params: { status?: 'pending' | 'completed'; includeDeleted?: boolean }) => {
     const tasks = await db.task.findMany({
-      where: params.status ? { status: params.status } : undefined,
+      where: {
+        status: params.status ? params.status : undefined,
+        deletedAt: params.includeDeleted ? undefined : null,
+      },
       orderBy: { createdAt: 'desc' },
     });
     return {
@@ -66,6 +76,21 @@ export const toggleTask = {
   },
 };
 
+export const deleteTask = {
+  description: 'Soft-delete a task (marks it as deleted without removing from DB)',
+  inputSchema: deleteTaskSchema,
+  execute: async (params: { id: string }) => {
+    const task = await db.task.update({
+      where: { id: params.id },
+      data: { deletedAt: new Date() },
+    });
+    return {
+      success: true,
+      task,
+    };
+  },
+};
+
 export const getDailyBriefing = {
   description: 'Get a summary of tasks and notes for the last 24 hours to provide a daily briefing',
   inputSchema: z.object({}),
@@ -77,9 +102,12 @@ export const getDailyBriefing = {
 
     const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
-    // Get Tasks
+    // Get Tasks (Not deleted)
     const tasks = await db.task.findMany({
-      where: { status: 'pending' },
+      where: { 
+        status: 'pending',
+        deletedAt: null 
+      },
       orderBy: { dueDate: 'asc' },
     });
 
@@ -120,7 +148,10 @@ export const getSmartReminders = {
     today.setHours(0, 0, 0, 0);
 
     const pendingTasks = await db.task.findMany({
-      where: { status: 'pending' },
+      where: { 
+        status: 'pending',
+        deletedAt: null
+      },
       orderBy: { dueDate: 'asc' },
     });
 

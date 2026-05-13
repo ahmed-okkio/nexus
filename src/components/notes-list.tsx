@@ -20,6 +20,13 @@ export function NotesList() {
 
   useEffect(() => {
     fetchNotes();
+
+    const handleUpdate = () => {
+      fetchNotes();
+    };
+
+    window.addEventListener('notes-updated', handleUpdate);
+    return () => window.removeEventListener('notes-updated', handleUpdate);
   }, []);
 
   const fetchNotes = async () => {
@@ -51,6 +58,7 @@ export function NotesList() {
       if (!response.ok) throw new Error("Failed to create note");
       setNewNoteContent("");
       await fetchNotes();
+      window.dispatchEvent(new CustomEvent("notes-updated"));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create note");
     } finally {
@@ -66,6 +74,7 @@ export function NotesList() {
 
       if (!response.ok) throw new Error("Failed to delete note");
       await fetchNotes();
+      window.dispatchEvent(new CustomEvent("notes-updated"));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to delete note");
     }
