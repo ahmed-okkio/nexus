@@ -76,11 +76,11 @@ export function ChatInterface() {
 
     const hasTaskResult = lastMessage.parts.some(p => 
       isToolUIPart(p) && p.state === 'output-available' && 
-      ['createTask', 'toggleTask', 'deleteTask'].includes(getToolName(p))
+      ['createTask', 'toggleTask', 'deleteTask', 'updateTask', 'convertNoteToTask'].includes(getToolName(p))
     );
     const hasNoteResult = lastMessage.parts.some(p => 
       isToolUIPart(p) && p.state === 'output-available' && 
-      ['createNote', 'createNotes', 'deleteNote'].includes(getToolName(p))
+      ['createNote', 'createNotes', 'deleteNote', 'updateNote'].includes(getToolName(p))
     );
     const hasBriefingResult = lastMessage.parts.some(p => 
       isToolUIPart(p) && p.state === 'output-available' && 

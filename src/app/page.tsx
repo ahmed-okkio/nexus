@@ -5,11 +5,15 @@ import { ChatInterface } from "@/components/chat-interface";
 import { TasksList } from "@/components/tasks-list";
 import { NotesList } from "@/components/notes-list";
 import { DailyBriefing } from "@/components/daily-briefing";
+import { SmartReminders } from "@/components/smart-reminders";
+import { Bell } from "lucide-react";
 
 export default function Home() {
   const [briefingData, setBriefingData] = useState<any>(null);
   const [showBriefing, setShowBriefing] = useState(false);
   const [loadingBriefing, setLoadingBriefing] = useState(false);
+  const [remindersData, setRemindersData] = useState<any>(null);
+  const [loadingReminders, setLoadingReminders] = useState(false);
   const [mounted, setMounted] = useState(false);
   
   const showBriefingRef = useRef(false);
@@ -30,6 +34,21 @@ export default function Home() {
     }
   };
 
+  const fetchRemindersData = async (quiet = false) => {
+    if (!quiet) setLoadingReminders(true);
+    try {
+      const response = await fetch('/api/tasks/reminders');
+      const data = await response.json();
+      if (data.success) {
+        setRemindersData(data);
+      }
+    } catch (error) {
+      console.error("Failed to fetch reminders:", error);
+    } finally {
+      if (!quiet) setLoadingReminders(false);
+    }
+  };
+
   const handleShowBriefing = () => {
     setShowBriefing(true);
     fetchBriefingData();
@@ -38,11 +57,13 @@ export default function Home() {
   useEffect(() => {
     setMounted(true);
     handleShowBriefing();
+    fetchRemindersData();
 
     const handleUpdate = () => {
       if (showBriefingRef.current) {
         fetchBriefingData(true);
       }
+      fetchRemindersData(true);
     };
 
     window.addEventListener('show-briefing', handleShowBriefing);

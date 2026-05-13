@@ -17,6 +17,11 @@ const deleteNoteSchema = z.object({
   id: z.string().describe('The ID of the note to delete'),
 });
 
+const updateNoteSchema = z.object({
+  id: z.string().describe('The ID of the note to update'),
+  content: z.string().describe('The new content of the note'),
+});
+
 export const createNote = {
   description: 'Create a single new note',
   inputSchema: createNoteSchema,
@@ -89,6 +94,21 @@ export const deleteNote = {
     return {
       success: true,
       message: `Note ${params.id} deleted successfully`,
+    };
+  },
+};
+
+export const updateNote = {
+  description: 'Update the content of an existing note',
+  inputSchema: updateNoteSchema,
+  execute: async (params: { id: string; content: string }) => {
+    const note = await db.note.update({
+      where: { id: params.id },
+      data: { content: params.content },
+    });
+    return {
+      success: true,
+      note,
     };
   },
 };

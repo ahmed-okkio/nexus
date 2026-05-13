@@ -1,8 +1,8 @@
 import { google } from "@ai-sdk/google";
 import { streamText, convertToModelMessages, stepCountIs, type UIMessage } from "ai";
 import { db } from "@/lib/db";
-import { createNote, createNotes, getNotes, deleteNote, searchNotes } from "@/lib/tools/notes";
-import { createTask, getTasks, toggleTask, deleteTask, getDailyBriefing, getSmartReminders } from "@/lib/tools/tasks";
+import { createNote, createNotes, getNotes, updateNote, deleteNote, searchNotes } from "@/lib/tools/notes";
+import { createTask, getTasks, toggleTask, updateTask, deleteTask, convertNoteToTask, getDailyBriefing, getSmartReminders } from "@/lib/tools/tasks";
 
 export const maxDuration = 30;
 
@@ -47,7 +47,7 @@ export async function POST(req: Request) {
     console.log("Chat API route hit. Processing request...");
 
     const result = streamText({
-      model: google("gemini-flash-latest"),
+      model: google("gemini-flash-lite-latest"),
       messages,
       stopWhen: stepCountIs(5),
       system: `You are Nexus, a personal AI assistant. 
@@ -55,6 +55,8 @@ export async function POST(req: Request) {
       Be concise, helpful, and conversational.
 
       When creating tasks, always use the user's input as the TITLE (the main task name). Use description for additional details if provided separately.
+
+      "Note to Task": Proactively suggest creating tasks from notes if you detect actionable items in the user's notes. You can use the 'convertNoteToTask' tool for this.
 
       After executing any tool (create, update, get), you MUST provide a short, single-sentence confirmation or summary message to the user immediately. Do not be silent.
 
@@ -92,12 +94,15 @@ export async function POST(req: Request) {
         createNote,
         createNotes,
         getNotes,
+        updateNote,
         searchNotes,
         deleteNote,
         createTask,
         getTasks,
         toggleTask,
+        updateTask,
         deleteTask,
+        convertNoteToTask,
         getDailyBriefing,
         getSmartReminders,
       },

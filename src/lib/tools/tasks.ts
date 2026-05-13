@@ -22,6 +22,21 @@ const deleteTaskSchema = z.object({
   id: z.string().describe('The task ID to delete'),
 });
 
+const updateTaskSchema = z.object({
+  id: z.string().describe('The task ID to update'),
+  title: z.string().optional().describe('New task title'),
+  description: z.string().optional().describe('New task description'),
+  priority: z.enum(['low', 'medium', 'high']).optional().describe('New task priority'),
+  dueDate: z.string().optional().describe('New due date in ISO format (YYYY-MM-DD)'),
+  status: z.enum(['pending', 'completed']).optional().describe('New status'),
+});
+
+const convertNoteToTaskSchema = z.object({
+  noteId: z.string().describe('The ID of the note to convert'),
+  priority: z.enum(['low', 'medium', 'high']).optional().describe('Task priority'),
+  dueDate: z.string().optional().describe('Optional due date in ISO format (YYYY-MM-DD)'),
+});
+
 export const createTask = {
   description: 'Create a new task with an optional due date, description, and priority',
   inputSchema: createTaskSchema,
@@ -87,6 +102,63 @@ export const deleteTask = {
     return {
       success: true,
       task,
+    };
+  },
+};
+
+export const updateTask = {
+  description: 'Update any field of an existing task (title, description, priority, dueDate, or status)',
+  inputSchema: updateTaskSchema,
+  execute: async (params: { 
+    id: string; 
+    title?: string; 
+    description?: string; 
+    priority?: 'low' | 'medium' | 'high'; 
+    dueDate?: string;
+    status?: 'pending' | 'completed';
+  }) => {
+    const task = await db.task.update({
+      where: { id: params.id },
+      data: {
+        title: params.title,
+        description: params.description,
+        priority: params.priority,
+        status: params.status,
+        dueDate: params.dueDate ? new Date(params.dueDate) : undefined,
+      },
+    });
+    return {
+      success: true,
+      task,
+    };
+  },
+};
+
+export const convertNoteToTask = {
+  description: 'Transform an existing note into an actionable task',
+  inputSchema: convertNoteToTaskSchema,
+  execute: async (params: { noteId: string; priority?: 'low' | 'medium' | 'high'; dueDate?: string }) => {
+    const note = await db.note.findUnique({
+      where: { id: params.noteId },
+    });
+
+    if (!note) {
+      return { success: false, error: 'Note not found' };
+    }
+
+    const task = await db.task.create({
+      data: {
+        title: note.content.substring(0, 50) + (note.content.length > 50 ? '...' : ''),
+        description: note.content,
+        priority: params.priority || 'medium',
+        dueDate: params.dueDate ? new Date(params.dueDate) : undefined,
+      },
+    });
+
+    return {
+      success: true,
+      task,
+      convertedFromNoteId: params.noteId,
     };
   },
 };
