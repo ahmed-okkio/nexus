@@ -2,7 +2,7 @@ import { google } from "@ai-sdk/google";
 import { streamText, convertToModelMessages, stepCountIs, type UIMessage } from "ai";
 import { db } from "@/lib/db";
 import { createNote, createNotes, getNotes, updateNote, deleteNote, searchNotes } from "@/lib/tools/notes";
-import { createTask, getTasks, toggleTask, updateTask, deleteTask, convertNoteToTask, getDailyBriefing, getSmartReminders } from "@/lib/tools/tasks";
+import { createTask, getTasks, searchTasks, toggleTask, updateTask, deleteTask, convertNoteToTask, getDailyBriefing, getSmartReminders } from "@/lib/tools/tasks";
 
 export const maxDuration = 30;
 
@@ -99,6 +99,7 @@ export async function POST(req: Request) {
         deleteNote,
         createTask,
         getTasks,
+        searchTasks,
         toggleTask,
         updateTask,
         deleteTask,

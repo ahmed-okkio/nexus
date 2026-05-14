@@ -97,14 +97,14 @@ export function TasksList() {
   };
 
   if (loading) {
-    return <div className="p-4 text-center text-zinc-500 animate-pulse">Loading tasks...</div>;
+    return <div className="rounded-2xl border border-dashed border-zinc-300/80 p-4 text-center text-zinc-500 animate-pulse dark:border-zinc-600">Loading tasks...</div>;
   }
 
   if (tasks.length === 0) {
     return (
-      <div className="p-8 text-center border-2 border-dashed border-zinc-200 dark:border-zinc-800 rounded-xl">
-        <Clock className="mx-auto text-zinc-300 dark:text-zinc-700 mb-2" size={32} />
-        <p className="text-sm text-zinc-500">No active tasks. Create one via chat!</p>
+      <div className="rounded-2xl border-2 border-dashed border-zinc-300/80 p-8 text-center dark:border-zinc-700">
+        <Clock className="mx-auto mb-2 text-zinc-400 dark:text-zinc-500" size={32} />
+        <p className="text-sm text-zinc-500 dark:text-zinc-300">No active tasks. Create one via chat.</p>
       </div>
     );
   }
@@ -115,17 +115,17 @@ export function TasksList() {
         <div
           key={task.id}
           className={cn(
-            "group p-4 border rounded-xl flex items-start gap-4 transition-all hover:shadow-sm",
+            "group flex items-start gap-4 rounded-2xl border p-4 transition-all hover:-translate-y-0.5 hover:shadow-lg",
             task.status === 'completed'
-              ? 'bg-zinc-50/50 border-zinc-200 opacity-75'
-              : 'bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800'
+              ? 'border-zinc-200 bg-zinc-100/50 opacity-80 dark:border-zinc-700 dark:bg-zinc-800/40'
+              : 'border-zinc-200/80 bg-white dark:border-zinc-700 dark:bg-zinc-900/80'
           )}
         >
           <button
             onClick={() => handleToggleTask(task.id, task.status)}
             className={cn(
               "flex-shrink-0 mt-0.5 transition-colors",
-              task.status === 'completed' ? 'text-emerald-500' : 'text-zinc-300 hover:text-emerald-500'
+              task.status === 'completed' ? 'text-emerald-500' : 'text-zinc-300 hover:text-blue-500'
             )}
           >
             {task.status === 'completed' ? <CheckCircle2 size={20} /> : <Circle size={20} />}
@@ -135,7 +135,7 @@ export function TasksList() {
             <div className="flex items-start justify-between gap-2">
               <p className={cn(
                 "font-medium break-words",
-                task.status === 'completed' ? 'line-through text-zinc-500' : 'text-zinc-900 dark:text-zinc-100'
+                task.status === 'completed' ? 'text-zinc-500 line-through dark:text-zinc-400' : 'text-zinc-900 dark:text-zinc-100'
               )}>
                 {task.title}
               </p>
@@ -148,7 +148,7 @@ export function TasksList() {
             </div>
 
             {task.description && (
-              <p className="text-sm text-zinc-500 mt-1 line-clamp-2">
+              <p className="mt-1 line-clamp-2 text-sm text-zinc-500 dark:text-zinc-300">
                 {task.description}
               </p>
             )}

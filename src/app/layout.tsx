@@ -1,10 +1,17 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import { Space_Grotesk, Sora } from "next/font/google";
 import "./globals.css";
 
-const inter = Inter({
-  variable: "--font-inter",
+const sora = Sora({
+  variable: "--font-sora",
   subsets: ["latin"],
+  display: "swap",
+});
+
+const spaceGrotesk = Space_Grotesk({
+  variable: "--font-space-grotesk",
+  subsets: ["latin"],
+  display: "swap",
 });
 
 export const metadata: Metadata = {
@@ -20,9 +27,9 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${inter.variable} h-full antialiased`}
+      className={`${sora.variable} ${spaceGrotesk.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col font-sans">{children}</body>
+      <body className={`${sora.className} min-h-full flex flex-col font-sans`}>{children}</body>
     </html>
   );
 }

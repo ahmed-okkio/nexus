@@ -1,15 +1,28 @@
 import { db } from "@/lib/db";
 import { NextResponse } from "next/server";
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
+    const { searchParams } = new URL(req.url);
+    const query = searchParams.get("query")?.trim();
+
     console.log('Fetching tasks from DB...');
     const tasks = await db.task.findMany({
-      where: { deletedAt: null },
+      where: {
+        deletedAt: null,
+        ...(query
+          ? {
+              OR: [
+                { title: { contains: query } },
+                { description: { contains: query } },
+              ],
+            }
+          : {}),
+      },
       orderBy: { createdAt: 'desc' },
     });
     console.log(`Successfully fetched ${tasks.length} tasks.`);
-    return NextResponse.json({ success: true, tasks });
+    return NextResponse.json({ success: true, tasks, count: tasks.length, query: query || null });
   } catch (error) {
     console.error('CRITICAL Error fetching tasks:', error);
     return NextResponse.json({ 

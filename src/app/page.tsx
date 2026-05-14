@@ -1,10 +1,16 @@
 'use client';
 
 import { useState, useEffect, useRef } from "react";
-import { ChatInterface } from "@/components/chat-interface";
+import dynamic from "next/dynamic";
 import { TasksList } from "@/components/tasks-list";
 import { NotesList } from "@/components/notes-list";
 import { DailyBriefing } from "@/components/daily-briefing";
+import { Bot, CheckSquare } from "lucide-react";
+
+const ChatInterface = dynamic(
+  () => import("@/components/chat-interface").then((module) => module.ChatInterface),
+  { ssr: false }
+);
 
 interface DailyBriefingResponse {
   success: boolean;
@@ -84,34 +90,34 @@ export default function Home() {
   }, []);
 
   return (
-    <div className="flex flex-col min-h-screen bg-gradient-to-b from-zinc-50 to-white dark:from-black dark:to-zinc-900">
-      {/* Header */}
-      <header className="border-b bg-white dark:bg-zinc-950 sticky top-0 z-40">
-        <div className="max-w-7xl mx-auto px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-3xl font-bold text-zinc-900 dark:text-white">Nexus</h1>
-              <p className="text-sm text-zinc-600 dark:text-zinc-400">Your personal AI assistant</p>
-            </div>
+    <div className="flex min-h-screen flex-col">
+      <header className="sticky top-0 z-40 border-b border-white/30 bg-transparent backdrop-blur-md dark:border-zinc-700/40">
+        <div className="mx-auto flex w-full max-w-[1320px] items-center justify-between px-5 py-4 lg:px-8">
+          <div className="space-y-1">
+            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-blue-600 dark:text-blue-300">Nexus Workspace</p>
+            <h1 className="text-2xl font-bold text-zinc-900 dark:text-zinc-100 lg:text-3xl">Your AI Command Center</h1>
           </div>
+          <span className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700 dark:border-blue-400/30 dark:bg-blue-500/10 dark:text-blue-200">
+            Live Assistant
+          </span>
         </div>
       </header>
 
-      {/* Main content */}
-      <main className="flex-1 max-w-7xl mx-auto w-full px-6 py-8">
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
-          {/* Chat - Takes 2 cols on large screens */}
-          <div className="lg:col-span-2">
-            <div className="bg-white dark:bg-zinc-950 rounded-lg shadow-sm border border-zinc-200 dark:border-zinc-800 overflow-hidden h-[600px]">
-              <ChatInterface />
+      <main className="mx-auto flex w-full max-w-[1320px] flex-1 px-5 py-6 lg:px-8 lg:py-8">
+        <div className="w-full space-y-7">
+          <section className="mx-auto w-full max-w-5xl space-y-4">
+            <div className="flex items-center justify-center gap-2 px-1 text-sm font-semibold uppercase tracking-[0.18em] text-zinc-600 dark:text-zinc-300">
+              <Bot size={16} />
+              Central Conversation
             </div>
-          </div>
+            <div className="h-[78vh] min-h-[700px] overflow-hidden rounded-3xl border border-white/70 bg-white/88 shadow-[0_30px_80px_-36px_rgba(22,34,77,0.58)] ring-1 ring-zinc-200/50 backdrop-blur-sm dark:border-zinc-700/70 dark:bg-zinc-900/78 dark:ring-zinc-700/70">
+                <ChatInterface />
+            </div>
+          </section>
 
-          {/* Sidebar - Tasks and Notes */}
-          <div className="lg:col-span-2 space-y-6">
-            {/* Daily Briefing (Conditional) */}
+          <section className="grid grid-cols-1 gap-5 xl:grid-cols-3">
             {showBriefing && (
-              <div className="bg-white dark:bg-zinc-950 rounded-lg shadow-md border-2 border-blue-100 dark:border-blue-900/30 p-6">
+              <div className="rounded-3xl border border-blue-200/50 bg-linear-to-br from-blue-50 to-white p-5 shadow-[0_15px_35px_-25px_rgba(45,99,255,0.6)] dark:border-blue-500/20 dark:from-blue-500/10 dark:to-zinc-900">
                 <DailyBriefing 
                   data={briefingData} 
                   loading={loadingBriefing} 
@@ -120,34 +126,26 @@ export default function Home() {
               </div>
             )}
 
-            {/* Tasks */}
-            <div className="bg-white dark:bg-zinc-950 rounded-lg shadow-sm border border-zinc-200 dark:border-zinc-800 p-4">
-              <h2 className="text-lg font-semibold mb-4 text-zinc-900 dark:text-white">Tasks</h2>
-              <TasksList />
-            </div>
-
-            {/* Notes */}
-            <div className="bg-white dark:bg-zinc-950 rounded-lg shadow-sm border border-zinc-200 dark:border-zinc-800 overflow-hidden">
-              <NotesList />
-            </div>
-
-            {/* Quick Actions */}
-            <div className="bg-white dark:bg-zinc-950 rounded-lg shadow-sm border border-zinc-200 dark:border-zinc-800 p-4">
-              <h2 className="text-lg font-semibold mb-4 text-zinc-900 dark:text-white">Quick Actions</h2>
-              <div className="space-y-2">
-                <button className="w-full px-4 py-2 bg-zinc-100 text-zinc-900 rounded-lg hover:bg-zinc-200 dark:bg-zinc-800 dark:text-white dark:hover:bg-zinc-700 text-sm font-medium transition-colors">
-                  View All Notes
-                </button>
+            <div className="overflow-hidden rounded-3xl border border-white/80 bg-white/85 shadow-[0_14px_45px_-32px_rgba(25,36,77,0.45)] backdrop-blur-sm dark:border-zinc-700/70 dark:bg-zinc-900/70">
+              <div className="flex items-center gap-2 border-b border-zinc-200/80 bg-white/45 p-4 font-semibold text-zinc-700 dark:border-zinc-700/70 dark:bg-zinc-900/30 dark:text-zinc-200">
+                <CheckSquare size={18} />
+                Tasks
+              </div>
+              <div className="p-4">
+                <TasksList />
               </div>
             </div>
-          </div>
+
+            <div className="overflow-hidden rounded-3xl border border-white/80 bg-white/85 shadow-[0_14px_45px_-32px_rgba(25,36,77,0.45)] backdrop-blur-sm dark:border-zinc-700/70 dark:bg-zinc-900/70">
+              <NotesList />
+            </div>
+          </section>
         </div>
       </main>
 
-      {/* Footer */}
-      <footer className="border-t bg-zinc-50 dark:bg-zinc-950 mt-12">
-        <div className="max-w-7xl mx-auto px-6 py-6 text-center text-sm text-zinc-600 dark:text-zinc-400">
-          <p>Nexus &mdash; Made for the LOS Hackathon 2026</p>
+      <footer className="mt-8 border-t border-white/60 bg-white/50 dark:border-zinc-700/70 dark:bg-zinc-900/45">
+        <div className="mx-auto max-w-7xl px-5 py-5 text-center text-xs font-medium uppercase tracking-[0.14em] text-zinc-500 dark:text-zinc-400 lg:px-8">
+          <p>Nexus · Los Hackathon 2026</p>
         </div>
       </footer>
     </div>
