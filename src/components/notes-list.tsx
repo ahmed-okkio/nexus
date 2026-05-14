@@ -1,8 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { FileText, Trash2, Edit3, Plus } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { FileText, Trash2, Plus } from "lucide-react";
 
 interface Note {
   id: string;
@@ -18,17 +17,6 @@ export function NotesList() {
   const [isAdding, setIsAdding] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    fetchNotes();
-
-    const handleUpdate = () => {
-      fetchNotes();
-    };
-
-    window.addEventListener('notes-updated', handleUpdate);
-    return () => window.removeEventListener('notes-updated', handleUpdate);
-  }, []);
-
   const fetchNotes = async () => {
     try {
       setIsLoading(true);
@@ -43,6 +31,22 @@ export function NotesList() {
       setIsLoading(false);
     }
   };
+
+  useEffect(() => {
+    const initialLoadTimer = window.setTimeout(() => {
+      void fetchNotes();
+    }, 0);
+
+    const handleUpdate = () => {
+      void fetchNotes();
+    };
+
+    window.addEventListener('notes-updated', handleUpdate);
+    return () => {
+      window.clearTimeout(initialLoadTimer);
+      window.removeEventListener('notes-updated', handleUpdate);
+    };
+  }, []);
 
   const handleAddNote = async () => {
     if (!newNoteContent.trim()) return;

@@ -5,19 +5,30 @@ import { ChatInterface } from "@/components/chat-interface";
 import { TasksList } from "@/components/tasks-list";
 import { NotesList } from "@/components/notes-list";
 import { DailyBriefing } from "@/components/daily-briefing";
-import { SmartReminders } from "@/components/smart-reminders";
-import { Bell } from "lucide-react";
+
+interface DailyBriefingResponse {
+  success: boolean;
+  summary: {
+    overdueCount: number;
+    dueTodayCount: number;
+    recentNotesCount: number;
+  };
+  data: {
+    overdue: Array<{ id: string; title: string; status: string; dueDate?: string }>;
+    dueToday: Array<{ id: string; title: string; status: string; dueDate?: string }>;
+    recentNotes: Array<{ id: string; content: string; createdAt: string }>;
+  };
+}
 
 export default function Home() {
-  const [briefingData, setBriefingData] = useState<any>(null);
-  const [showBriefing, setShowBriefing] = useState(false);
+  const [briefingData, setBriefingData] = useState<DailyBriefingResponse | null>(null);
+  const [showBriefing, setShowBriefing] = useState(true);
   const [loadingBriefing, setLoadingBriefing] = useState(false);
-  const [remindersData, setRemindersData] = useState<any>(null);
-  const [loadingReminders, setLoadingReminders] = useState(false);
-  const [mounted, setMounted] = useState(false);
   
   const showBriefingRef = useRef(false);
-  showBriefingRef.current = showBriefing;
+  useEffect(() => {
+    showBriefingRef.current = showBriefing;
+  }, [showBriefing]);
 
   const fetchBriefingData = async (quiet = false) => {
     if (!quiet) setLoadingBriefing(true);
@@ -34,36 +45,30 @@ export default function Home() {
     }
   };
 
-  const fetchRemindersData = async (quiet = false) => {
-    if (!quiet) setLoadingReminders(true);
+  const fetchRemindersData = async () => {
     try {
       const response = await fetch('/api/tasks/reminders');
-      const data = await response.json();
-      if (data.success) {
-        setRemindersData(data);
-      }
+      await response.json();
     } catch (error) {
       console.error("Failed to fetch reminders:", error);
-    } finally {
-      if (!quiet) setLoadingReminders(false);
     }
   };
 
-  const handleShowBriefing = () => {
-    setShowBriefing(true);
-    fetchBriefingData();
-  };
-
   useEffect(() => {
-    setMounted(true);
-    handleShowBriefing();
-    fetchRemindersData();
+    const initialLoadTimer = window.setTimeout(() => {
+      void fetchBriefingData();
+      void fetchRemindersData();
+    }, 0);
 
     const handleUpdate = () => {
       if (showBriefingRef.current) {
-        fetchBriefingData(true);
+        void fetchBriefingData(true);
       }
-      fetchRemindersData(true);
+      void fetchRemindersData();
+    };
+    const handleShowBriefing = () => {
+      setShowBriefing(true);
+      void fetchBriefingData();
     };
 
     window.addEventListener('show-briefing', handleShowBriefing);
@@ -71,13 +76,12 @@ export default function Home() {
     window.addEventListener('notes-updated', handleUpdate);
 
     return () => {
+      window.clearTimeout(initialLoadTimer);
       window.removeEventListener('show-briefing', handleShowBriefing);
       window.removeEventListener('tasks-updated', handleUpdate);
       window.removeEventListener('notes-updated', handleUpdate);
     };
   }, []);
-
-  if (!mounted) return <div className="min-h-screen bg-zinc-50" />;
 
   return (
     <div className="flex flex-col min-h-screen bg-gradient-to-b from-zinc-50 to-white dark:from-black dark:to-zinc-900">

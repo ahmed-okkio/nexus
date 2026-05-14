@@ -6,21 +6,41 @@ import { Send, User, Bot, Mic, MicOff } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useEffect, useRef, useState } from "react";
 
-// Speech Recognition Type Definitions
+interface RecognitionAlternative {
+  transcript: string;
+}
+
+interface RecognitionResult {
+  [index: number]: RecognitionAlternative;
+}
+
 interface SpeechRecognitionEvent extends Event {
+  resultIndex: number;
   results: {
-    [key: number]: {
-      [key: number]: {
-        transcript: string;
-      };
-    };
+    [index: number]: RecognitionResult;
+    length: number;
   };
+}
+
+interface SpeechRecognitionLike {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  onresult: ((event: SpeechRecognitionEvent) => void) | null;
+  onend: (() => void) | null;
+  onerror: ((event: { error: string }) => void) | null;
+  start: () => void;
+  stop: () => void;
 }
 
 declare global {
   interface Window {
-    SpeechRecognition: any;
-    webkitSpeechRecognition: any;
+    SpeechRecognition?: {
+      new (): SpeechRecognitionLike;
+    };
+    webkitSpeechRecognition?: {
+      new (): SpeechRecognitionLike;
+    };
   }
 }
 
@@ -58,9 +78,10 @@ function formatToolResultMessage(toolName: string) {
 export function ChatInterface() {
   const [inputValue, setInputValue] = useState("");
   const [isListening, setIsListening] = useState(false);
-  const [isSpeechSupported, setIsSpeechSupported] = useState(false);
-  const [mounted, setMounted] = useState(false);
-  const recognitionRef = useRef<any>(null);
+  const [isSpeechSupported] = useState(
+    () => typeof window !== "undefined" && !!(window.SpeechRecognition || window.webkitSpeechRecognition)
+  );
+  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const { messages, sendMessage, status } = useChat({
@@ -93,16 +114,14 @@ export function ChatInterface() {
   }, [messages]);
 
   useEffect(() => {
-    setMounted(true);
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (SpeechRecognition) {
-      setIsSpeechSupported(true);
       const recognition = new SpeechRecognition();
       recognition.continuous = false;
       recognition.interimResults = true;
       recognition.lang = 'en-US';
 
-      recognition.onresult = (event: any) => {
+      recognition.onresult = (event: SpeechRecognitionEvent) => {
         let transcript = "";
         for (let i = event.resultIndex; i < event.results.length; i++) {
           transcript += event.results[i][0].transcript;
@@ -111,7 +130,7 @@ export function ChatInterface() {
       };
 
       recognition.onend = () => setIsListening(false);
-      recognition.onerror = (event: any) => {
+      recognition.onerror = (event: { error: string }) => {
         console.error("Speech recognition error:", event.error);
         setIsListening(false);
       };
@@ -142,8 +161,6 @@ export function ChatInterface() {
     if (isListening) recognitionRef.current?.stop();
     await sendMessage({ text });
   };
-
-  if (!mounted) return <div className="h-[600px] w-full border rounded-xl bg-white shadow-sm" />;
 
   return (
     <div className="flex flex-col h-[600px] w-full max-w-2xl border rounded-xl bg-white shadow-sm overflow-hidden">

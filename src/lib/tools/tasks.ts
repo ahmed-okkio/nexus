@@ -31,6 +31,10 @@ const updateTaskSchema = z.object({
   status: z.enum(['pending', 'completed']).optional().describe('New status'),
 });
 
+const searchTasksSchema = z.object({
+  query: z.string().describe('The search query for task titles or descriptions'),
+});
+
 const convertNoteToTaskSchema = z.object({
   noteId: z.string().describe('The ID of the note to convert'),
   priority: z.enum(['low', 'medium', 'high']).optional().describe('Task priority'),
@@ -65,6 +69,28 @@ export const getTasks = {
       where: {
         status: params.status ? params.status : undefined,
         deletedAt: params.includeDeleted ? undefined : null,
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    return {
+      success: true,
+      tasks,
+      count: tasks.length,
+    };
+  },
+};
+
+export const searchTasks = {
+  description: 'Search for tasks containing specific text in title or description',
+  inputSchema: searchTasksSchema,
+  execute: async (params: { query: string }) => {
+    const tasks = await db.task.findMany({
+      where: {
+        deletedAt: null,
+        OR: [
+          { title: { contains: params.query } },
+          { description: { contains: params.query } },
+        ],
       },
       orderBy: { createdAt: 'desc' },
     });

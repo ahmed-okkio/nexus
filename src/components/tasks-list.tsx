@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { CheckCircle2, Circle, Trash2, AlertTriangle, Info, Clock } from 'lucide-react';
+import { CheckCircle2, Circle, Trash2, Clock } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface Task {
@@ -40,14 +40,19 @@ export function TasksList() {
   };
 
   useEffect(() => {
-    fetchTasks();
+    const initialLoadTimer = window.setTimeout(() => {
+      void fetchTasks();
+    }, 0);
 
     const handleUpdate = () => {
-      fetchTasks();
+      void fetchTasks();
     };
 
     window.addEventListener('tasks-updated', handleUpdate);
-    return () => window.removeEventListener('tasks-updated', handleUpdate);
+    return () => {
+      window.clearTimeout(initialLoadTimer);
+      window.removeEventListener('tasks-updated', handleUpdate);
+    };
   }, []);
 
   const handleToggleTask = async (id: string, currentStatus: string) => {

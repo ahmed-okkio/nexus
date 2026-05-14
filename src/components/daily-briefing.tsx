@@ -1,7 +1,6 @@
 'use client';
 
 import { Calendar, AlertCircle, FileText, CheckCircle2 } from 'lucide-react';
-import { cn } from '@/lib/utils';
 
 interface Task {
   id: string;
@@ -104,7 +103,7 @@ export function DailyBriefing({ data, loading, onClose }: DailyBriefingProps) {
 
         {details.dueToday.length > 0 && (
           <section>
-            <h4 className="text-sm font-semibold text-blue-600 dark:text-blue-400 mb-2 px-1">Today's Focus</h4>
+            <h4 className="text-sm font-semibold text-blue-600 dark:text-blue-400 mb-2 px-1">Today&apos;s Focus</h4>
             <div className="space-y-2">
               {details.dueToday.map(task => (
                 <div key={task.id} className="p-3 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg text-sm shadow-sm">
@@ -121,7 +120,7 @@ export function DailyBriefing({ data, loading, onClose }: DailyBriefingProps) {
             <div className="space-y-2">
               {details.recentNotes.map(note => (
                 <div key={note.id} className="p-3 bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-200 dark:border-zinc-800 rounded-lg text-sm italic text-zinc-700 dark:text-zinc-300">
-                  "{note.content.length > 100 ? note.content.substring(0, 100) + '...' : note.content}"
+                  &quot;{note.content.length > 100 ? note.content.substring(0, 100) + '...' : note.content}&quot;
                 </div>
               ))}
             </div>
