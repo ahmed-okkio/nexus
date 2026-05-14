@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import { FileText, Trash2 } from "lucide-react";
 
 interface Note {
@@ -14,21 +15,58 @@ export function NotesList() {
   const [notes, setNotes] = useState<Note[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const timeoutsRef = useRef<number[]>([]);
+  const notesRef = useRef<Note[]>([]);
 
-  const fetchNotes = async () => {
+  const clearPendingAnimations = () => {
+    timeoutsRef.current.forEach((timeoutId) => window.clearTimeout(timeoutId));
+    timeoutsRef.current = [];
+  };
+
+  useEffect(() => {
+    notesRef.current = notes;
+  }, [notes]);
+
+  const reconcileNotes = useCallback((nextNotes: Note[]) => {
+    clearPendingAnimations();
+    const currentNotes = notesRef.current;
+    const currentIds = new Set(currentNotes.map((note) => note.id));
+    const nextIds = new Set(nextNotes.map((note) => note.id));
+    const removedIds = currentNotes.map((note) => note.id).filter((id) => !nextIds.has(id));
+    const hasNewItems = nextNotes.some((note) => !currentIds.has(note.id));
+
+    if (removedIds.length === 0 || hasNewItems) {
+      setNotes(nextNotes);
+      return;
+    }
+
+    removedIds.forEach((removedId, index) => {
+      const timeoutId = window.setTimeout(() => {
+        setNotes((previous) => previous.filter((note) => note.id !== removedId));
+      }, index * 130);
+      timeoutsRef.current.push(timeoutId);
+    });
+
+    const finalizeId = window.setTimeout(() => {
+      setNotes(nextNotes);
+    }, removedIds.length * 130 + 20);
+    timeoutsRef.current.push(finalizeId);
+  }, []);
+
+  const fetchNotes = useCallback(async () => {
     try {
       setIsLoading(true);
       const response = await fetch("/api/notes");
       if (!response.ok) throw new Error("Failed to fetch notes");
       const data = await response.json();
-      setNotes(data.notes || []);
+      reconcileNotes(data.notes || []);
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load notes");
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [reconcileNotes]);
 
   useEffect(() => {
     const initialLoadTimer = window.setTimeout(() => {
@@ -43,8 +81,9 @@ export function NotesList() {
     return () => {
       window.clearTimeout(initialLoadTimer);
       window.removeEventListener('notes-updated', handleUpdate);
+      clearPendingAnimations();
     };
-  }, []);
+  }, [fetchNotes]);
 
   const handleDeleteNote = async (id: string) => {
     try {
@@ -101,18 +140,24 @@ export function NotesList() {
           </div>
         )}
 
-        {!isLoading &&
-          notes.map((note) => (
-            <div
+        {!isLoading && (
+          <AnimatePresence mode="popLayout">
+          {notes.map((note) => (
+            <motion.div
               key={note.id}
+              layout
+              initial={{ opacity: 0, y: 12, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9, y: -10, filter: "blur(2px)" }}
+              transition={{ duration: 0.22, ease: "easeOut" }}
               className="group rounded-xl border border-zinc-200/90 bg-white/75 p-4 transition-colors hover:bg-white dark:border-zinc-700 dark:bg-zinc-800/55 dark:hover:bg-zinc-800"
             >
               <div className="flex items-start justify-between gap-2">
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm text-zinc-800 break-words line-clamp-3">
+                  <p className="text-sm text-zinc-800 break-words line-clamp-3 dark:text-zinc-100">
                     {note.content}
                   </p>
-                  <p className="text-xs text-zinc-500 mt-2">
+                  <p className="mt-2 text-xs text-zinc-500 dark:text-zinc-300">
                     {formatDate(note.createdAt)}
                   </p>
                 </div>
@@ -126,8 +171,10 @@ export function NotesList() {
                   </button>
                 </div>
               </div>
-            </div>
+            </motion.div>
           ))}
+          </AnimatePresence>
+        )}
       </div>
     </div>
   );

@@ -27,7 +27,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${sora.variable} ${spaceGrotesk.variable} h-full antialiased`}
+      className={`${sora.variable} ${spaceGrotesk.variable} dark h-full antialiased`}
     >
       <body className={`${sora.className} min-h-full flex flex-col font-sans`}>{children}</body>
     </html>

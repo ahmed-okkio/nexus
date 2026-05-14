@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
 import { CheckCircle2, Circle, Trash2, Clock } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -18,8 +19,45 @@ interface Task {
 export function TasksList() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
+  const timeoutsRef = useRef<number[]>([]);
+  const tasksRef = useRef<Task[]>([]);
 
-  const fetchTasks = async () => {
+  const clearPendingAnimations = () => {
+    timeoutsRef.current.forEach((timeoutId) => window.clearTimeout(timeoutId));
+    timeoutsRef.current = [];
+  };
+
+  useEffect(() => {
+    tasksRef.current = tasks;
+  }, [tasks]);
+
+  const reconcileTasks = useCallback((nextTasks: Task[]) => {
+    clearPendingAnimations();
+    const currentTasks = tasksRef.current;
+    const currentIds = new Set(currentTasks.map((task) => task.id));
+    const nextIds = new Set(nextTasks.map((task) => task.id));
+    const removedIds = currentTasks.map((task) => task.id).filter((id) => !nextIds.has(id));
+    const hasNewItems = nextTasks.some((task) => !currentIds.has(task.id));
+
+    if (removedIds.length === 0 || hasNewItems) {
+      setTasks(nextTasks);
+      return;
+    }
+
+    removedIds.forEach((removedId, index) => {
+      const timeoutId = window.setTimeout(() => {
+        setTasks((previous) => previous.filter((task) => task.id !== removedId));
+      }, index * 130);
+      timeoutsRef.current.push(timeoutId);
+    });
+
+    const finalizeId = window.setTimeout(() => {
+      setTasks(nextTasks);
+    }, removedIds.length * 130 + 20);
+    timeoutsRef.current.push(finalizeId);
+  }, []);
+
+  const fetchTasks = useCallback(async () => {
     try {
       const response = await fetch('/api/tasks');
       if (!response.ok) {
@@ -28,7 +66,8 @@ export function TasksList() {
       }
       const data = await response.json();
       // Only show non-deleted tasks
-      setTasks(data.tasks?.filter((t: Task) => !t.deletedAt) || []);
+      const nextTasks = data.tasks?.filter((t: Task) => !t.deletedAt) || [];
+      reconcileTasks(nextTasks);
     } catch (error) {
       console.error('Error fetching tasks:', error);
       // We'll keep the empty state but maybe show the error in console for now
@@ -37,7 +76,7 @@ export function TasksList() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [reconcileTasks]);
 
   useEffect(() => {
     const initialLoadTimer = window.setTimeout(() => {
@@ -52,8 +91,9 @@ export function TasksList() {
     return () => {
       window.clearTimeout(initialLoadTimer);
       window.removeEventListener('tasks-updated', handleUpdate);
+      clearPendingAnimations();
     };
-  }, []);
+  }, [fetchTasks]);
 
   const handleToggleTask = async (id: string, currentStatus: string) => {
     const newStatus = currentStatus === 'pending' ? 'completed' : 'pending';
@@ -111,9 +151,15 @@ export function TasksList() {
 
   return (
     <div className="space-y-3">
-      {tasks.map(task => (
-        <div
+      <AnimatePresence mode="popLayout">
+        {tasks.map(task => (
+        <motion.div
           key={task.id}
+          layout
+          initial={{ opacity: 0, y: 12, scale: 0.98 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, scale: 0.9, y: -10, filter: "blur(2px)" }}
+          transition={{ duration: 0.22, ease: "easeOut" }}
           className={cn(
             "group flex items-start gap-4 rounded-2xl border p-4 transition-all hover:-translate-y-0.5 hover:shadow-lg",
             task.status === 'completed'
@@ -169,8 +215,9 @@ export function TasksList() {
               </button>
             </div>
           </div>
-        </div>
+        </motion.div>
       ))}
+      </AnimatePresence>
     </div>
   );
 }
