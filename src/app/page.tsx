@@ -148,6 +148,7 @@ const panels: Record<AiState, HudPanelData[]> = {
     },
   ],
 };
+const NEXUS_VOICE_VOLUME = 0.38;
 
 export default function Home() {
   const [state, setState] = useState<AiState>("idle");
@@ -186,6 +187,7 @@ export default function Home() {
   const voiceActivityTimeoutRef = useRef<number | null>(null);
   const wakeDetectedRef = useRef(false);
   const workspacePanelRef = useRef<HTMLDivElement | null>(null);
+  const playbackAudioRef = useRef<HTMLAudioElement | null>(null);
   const activePanels = useMemo(() => {
     const base = panels[state];
     return base.map((panel) => {
@@ -314,15 +316,55 @@ export default function Home() {
     }
   }, []);
 
-  const speakReply = useCallback((text: string) => {
-    if (!speakEnabled || typeof window === "undefined" || !("speechSynthesis" in window)) {
+  const speakReply = useCallback(async (text: string) => {
+    if (!speakEnabled || typeof window === "undefined") {
       return;
     }
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.rate = 1;
-    utterance.pitch = 1;
-    window.speechSynthesis.cancel();
-    window.speechSynthesis.speak(utterance);
+
+    try {
+      const response = await fetch("/api/voice/tts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`TTS request failed (${response.status})`);
+      }
+
+      const wavBlob = await response.blob();
+      if (playbackAudioRef.current) {
+        playbackAudioRef.current.pause();
+        playbackAudioRef.current = null;
+      }
+      const audioUrl = URL.createObjectURL(wavBlob);
+      const audio = new Audio(audioUrl);
+      audio.volume = NEXUS_VOICE_VOLUME;
+      playbackAudioRef.current = audio;
+      audio.onended = () => {
+        URL.revokeObjectURL(audioUrl);
+        if (playbackAudioRef.current === audio) {
+          playbackAudioRef.current = null;
+        }
+      };
+      audio.onerror = () => {
+        URL.revokeObjectURL(audioUrl);
+        if (playbackAudioRef.current === audio) {
+          playbackAudioRef.current = null;
+        }
+      };
+      await audio.play();
+      return;
+    } catch {
+      if (!("speechSynthesis" in window)) {
+        return;
+      }
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.rate = 1;
+      utterance.pitch = 1;
+      window.speechSynthesis.cancel();
+      window.speechSynthesis.speak(utterance);
+    }
   }, [speakEnabled]);
 
   useEffect(() => {
@@ -331,7 +373,7 @@ export default function Home() {
     }
     lastSpokenReplyRef.current = assistantReply;
     setTransientStatus("Assistant replied");
-    speakReply(assistantReply);
+    void speakReply(assistantReply);
   }, [assistantReply, speakReply]);
 
   useEffect(() => {
@@ -525,6 +567,10 @@ export default function Home() {
       }
       if (statusTimeoutRef.current) {
         window.clearTimeout(statusTimeoutRef.current);
+      }
+      if (playbackAudioRef.current) {
+        playbackAudioRef.current.pause();
+        playbackAudioRef.current = null;
       }
     };
   }, [sendMessage]);
