@@ -12,6 +12,7 @@ import { VoiceDock } from "@/components/ai-home/voice-dock";
 import { TasksList } from "@/components/tasks-list";
 import { NotesList } from "@/components/notes-list";
 import { DailyBriefing } from "@/components/daily-briefing";
+import { SmartReminders } from "@/components/smart-reminders";
 import type { AiState, HudPanelData } from "@/components/ai-home/types";
 
 type SpeechRecognitionType = {
@@ -66,6 +67,19 @@ type NoteLite = {
   id: string;
   content: string;
   createdAt: string;
+};
+
+type SmartRemindersResponse = {
+  success: boolean;
+  hasReminders: boolean;
+  reminders: Array<{
+    type: "overdue" | "urgent" | "accumulation";
+    priority: "critical" | "high" | "medium";
+    message: string;
+    tasks?: Array<{ id: string; title: string; dueDate?: string }>;
+    count?: number;
+  }>;
+  totalPending: number;
 };
 
 const extractCommandAfterWakeWord = (value: string, wakeWord = "nexus") => {
@@ -149,6 +163,17 @@ const panels: Record<AiState, HudPanelData[]> = {
   ],
 };
 const NEXUS_VOICE_VOLUME = 0.38;
+const normalizeTtsText = (input: string) =>
+  input
+    .replace(/\bI've\b/gi, "I have")
+    .replace(/\bI'd\b/gi, "I would")
+    .replace(/\bI'll\b/gi, "I will")
+    .replace(/\bwe've\b/gi, "we have")
+    .replace(/\bthey've\b/gi, "they have")
+    .replace(/^(\s*\b[\w']+\b)(?:\s*,\s*\1\b){1,}/i, "$1")
+    .replace(/\b([\w']+)\b(?:\s*,\s*\1\b){1,}/gi, "$1")
+    .replace(/\s+/g, " ")
+    .trim();
 
 export default function Home() {
   const [state, setState] = useState<AiState>("idle");
@@ -162,6 +187,7 @@ export default function Home() {
   const [speakEnabled, setSpeakEnabled] = useState(true);
   const [tasksCache, setTasksCache] = useState<TaskLite[]>([]);
   const [notesCache, setNotesCache] = useState<NoteLite[]>([]);
+  const [remindersData, setRemindersData] = useState<SmartRemindersResponse | null>(null);
   const [isSupported] = useState(() => {
     if (typeof window === "undefined") {
       return true;
@@ -182,6 +208,7 @@ export default function Home() {
   const statusTimeoutRef = useRef<number | null>(null);
   const silenceTimeoutRef = useRef<number | null>(null);
   const lastSpokenReplyRef = useRef("");
+  const lastSpokenAssistantMessageIdRef = useRef("");
   const shouldKeepListeningRef = useRef(true);
   const isFinalizingCommandRef = useRef(false);
   const pauseRecognitionRef = useRef(false);
@@ -191,6 +218,9 @@ export default function Home() {
   const workspacePanelRef = useRef<HTMLDivElement | null>(null);
   const playbackAudioRef = useRef<HTMLAudioElement | null>(null);
   const micEnabledRef = useRef(true);
+  const orbAnchorRef = useRef<HTMLDivElement | null>(null);
+  const processedToolResultMessageIdRef = useRef("");
+  const [showMiniOrb, setShowMiniOrb] = useState(false);
   const activePanels = useMemo(() => {
     const base = panels[state];
     return base.map((panel) => {
@@ -222,6 +252,10 @@ export default function Home() {
       .map((part) => part.text)
       .join(" ")
       .trim();
+  }, [messages]);
+  const assistantReplyMessageId = useMemo(() => {
+    const assistantMessages = messages.filter((message) => message.role === "assistant");
+    return assistantMessages[assistantMessages.length - 1]?.id ?? "";
   }, [messages]);
 
   const headlineText = useMemo(() => {
@@ -275,6 +309,16 @@ export default function Home() {
     if (!lastAssistant) {
       return;
     }
+    if (status !== "ready") {
+      return;
+    }
+    if (processedToolResultMessageIdRef.current === lastAssistant.id) {
+      return;
+    }
+    const hasAssistantText = lastAssistant.parts.some((part) => part.type === "text" && part.text.trim().length > 0);
+    if (!hasAssistantText) {
+      return;
+    }
     const hasTaskResult = lastAssistant.parts.some(
       (part) =>
         isToolUIPart(part) &&
@@ -296,22 +340,28 @@ export default function Home() {
       window.dispatchEvent(new CustomEvent("notes-updated"));
       window.setTimeout(() => routeToNav("Notes"), 0);
     }
-  }, [messages, routeToNav]);
+    if (hasTaskResult || hasNoteResult) {
+      processedToolResultMessageIdRef.current = lastAssistant.id;
+    }
+  }, [messages, routeToNav, status]);
 
   const fetchSnapshotData = useCallback(async (activeTimeframe: Timeframe) => {
     try {
-      const [briefingRes, tasksRes, notesRes] = await Promise.all([
+      const [briefingRes, tasksRes, notesRes, remindersRes] = await Promise.all([
         fetch("/api/tasks/briefing"),
         fetch("/api/tasks"),
         fetch("/api/notes"),
+        fetch("/api/tasks/reminders"),
       ]);
       const briefingJson = (await briefingRes.json()) as BriefingResponse;
       const tasksJson = (await tasksRes.json()) as { tasks?: TaskLite[] };
       const notesJson = (await notesRes.json()) as { notes?: NoteLite[] };
+      const remindersJson = (await remindersRes.json()) as SmartRemindersResponse;
       setBriefingData(briefingJson.success ? briefingJson : null);
       const tasks = (tasksJson.tasks ?? []).filter((task) => !task.deletedAt && task.status !== "completed");
       setTasksCache(tasksJson.tasks ?? []);
       setNotesCache(notesJson.notes ?? []);
+      setRemindersData(remindersJson.success ? remindersJson : null);
       const now = new Date();
       const end = new Date(now);
       if (activeTimeframe === "Today") {
@@ -339,6 +389,7 @@ export default function Home() {
       });
     } catch {
       setSnapshotCounts({ dueCount: 0, upcomingLabel: "Data unavailable right now", noteCount: 0 });
+      setRemindersData(null);
     }
   }, []);
 
@@ -346,12 +397,16 @@ export default function Home() {
     if (!speakEnabled || typeof window === "undefined") {
       return;
     }
+    const ttsText = normalizeTtsText(text);
+    if (!ttsText) {
+      return;
+    }
 
     try {
       const response = await fetch("/api/voice/tts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text }),
+        body: JSON.stringify({ text: ttsText }),
       });
 
       if (!response.ok) {
@@ -385,7 +440,7 @@ export default function Home() {
       if (!("speechSynthesis" in window)) {
         return;
       }
-      const utterance = new SpeechSynthesisUtterance(text);
+      const utterance = new SpeechSynthesisUtterance(ttsText);
       utterance.rate = 1;
       utterance.pitch = 1;
       window.speechSynthesis.cancel();
@@ -394,13 +449,23 @@ export default function Home() {
   }, [speakEnabled]);
 
   useEffect(() => {
-    if (!assistantReply || assistantReply === lastSpokenReplyRef.current) {
+    if (!assistantReply || !assistantReplyMessageId) {
       return;
     }
+    if (status !== "ready") {
+      return;
+    }
+    if (assistantReplyMessageId === lastSpokenAssistantMessageIdRef.current) {
+      return;
+    }
+    if (assistantReply === lastSpokenReplyRef.current) {
+      return;
+    }
+    lastSpokenAssistantMessageIdRef.current = assistantReplyMessageId;
     lastSpokenReplyRef.current = assistantReply;
     setTransientStatus("Assistant replied");
     void speakReply(assistantReply);
-  }, [assistantReply, speakReply]);
+  }, [assistantReply, assistantReplyMessageId, speakReply, status]);
 
   useEffect(() => {
     if (status !== "ready" || !shouldResumeListeningRef.current || !micEnabledRef.current) {
@@ -456,6 +521,23 @@ export default function Home() {
     }, 90);
     return () => window.clearTimeout(timer);
   }, [activeNav, showWorkspacePanel]);
+
+  useEffect(() => {
+    const observerTarget = orbAnchorRef.current;
+    if (!observerTarget) {
+      return;
+    }
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        setShowMiniOrb(!entry.isIntersecting);
+      },
+      {
+        threshold: 0.22,
+      },
+    );
+    observer.observe(observerTarget);
+    return () => observer.disconnect();
+  }, []);
 
   useEffect(() => {
     const speechWindow = window as SpeechWindow;
@@ -696,7 +778,9 @@ export default function Home() {
             <p className="text-sm uppercase tracking-[0.35em] text-blue-100/60">Nexus OS</p>
           </div>
 
-          <AssistantOrb state={state} />
+          <div ref={orbAnchorRef}>
+            <AssistantOrb state={state} />
+          </div>
           <div className="mt-8 w-full">
             <VoiceDock
               state={state}
@@ -737,13 +821,25 @@ export default function Home() {
                 </button>
               </div>
               {activeNav === "Tasks" && <TasksList />}
+              {activeNav === "Tasks" ? (
+                <div className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4">
+                  <p className="mb-3 text-sm font-medium text-blue-50">Smart Reminders</p>
+                  <SmartReminders data={remindersData} loading={false} />
+                </div>
+              ) : null}
               {activeNav === "Notes" && <NotesList />}
               {activeNav === "Home" && (
-                <DailyBriefing
-                  data={briefingData?.success ? briefingData : null}
-                  loading={false}
-                  onClose={() => setShowWorkspacePanel(false)}
-                />
+                <div className="space-y-4">
+                  <DailyBriefing
+                    data={briefingData?.success ? briefingData : null}
+                    loading={false}
+                    onClose={() => setShowWorkspacePanel(false)}
+                  />
+                  <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                    <p className="mb-3 text-sm font-medium text-blue-50">Smart Reminders</p>
+                    <SmartReminders data={remindersData} loading={false} />
+                  </div>
+                </div>
               )}
               {activeNav === "Calendar" && (
                 <div className="space-y-3 rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-blue-100/80">
@@ -793,6 +889,10 @@ export default function Home() {
                       <p className="text-xs text-blue-100/70">Voice Commands</p>
                       <p className="text-2xl text-blue-50">{messages.filter((m) => m.role === "user").length}</p>
                     </div>
+                  </div>
+                  <div className="rounded-2xl border border-white/10 bg-black/15 p-3">
+                    <p className="mb-2 text-xs text-blue-100/70">Smart Reminders</p>
+                    <SmartReminders data={remindersData} loading={false} />
                   </div>
                   <p>Try: &quot;Nexus summarize my week&quot;.</p>
                 </div>
@@ -853,6 +953,32 @@ export default function Home() {
           </div>
         </section>
       </div>
+
+      <AnimatePresence>
+        {showMiniOrb ? (
+          <motion.div
+            initial={{ opacity: 0, x: 28, scale: 0.86 }}
+            animate={{ opacity: 1, x: 0, scale: 1 }}
+            exit={{ opacity: 0, x: 28, scale: 0.86 }}
+            transition={{ duration: 0.28, ease: "easeOut" }}
+            className="fixed right-6 top-1/2 z-40 hidden w-[170px] -translate-y-1/2 xl:block"
+          >
+            <button
+              type="button"
+              onClick={() => {
+                orbAnchorRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+              }}
+              className="mx-auto block rounded-full border border-blue-100/30 bg-[#0a132d]/70 p-1 shadow-[0_0_35px_rgba(99,136,255,0.35)] backdrop-blur-xl"
+              aria-label="Focus assistant orb"
+            >
+              <AssistantOrb state={state} compact />
+            </button>
+            <div className="mt-2 rounded-xl border border-blue-100/20 bg-[#0a132d]/75 px-3 py-2 text-center text-xs text-blue-50/90 backdrop-blur-xl">
+              {assistantReply || "Nexus is listening..."}
+            </div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
     </main>
   );
 }

@@ -1,6 +1,6 @@
 'use client';
 
-import { Bell, AlertCircle, Clock, ListChecks } from 'lucide-react';
+import { AlertCircle, Clock, ListChecks } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface ReminderTask {

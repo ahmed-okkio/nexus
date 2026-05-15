@@ -10,9 +10,11 @@ const pulseByState: Record<AiState, number> = {
   responding: 1.15,
 };
 
-export function AssistantOrb({ state }: { state: AiState }) {
+export function AssistantOrb({ state, compact = false }: { state: AiState; compact?: boolean }) {
+  const outerSize = compact ? "h-[120px] w-[120px] sm:h-[120px] sm:w-[120px]" : "h-[260px] w-[260px] sm:h-[360px] sm:w-[360px]";
+  const particleOffset = compact ? -54 : -164;
   return (
-    <div className="relative flex h-[260px] w-[260px] items-center justify-center sm:h-[360px] sm:w-[360px]">
+    <div className={`relative flex items-center justify-center ${outerSize}`}>
       <motion.div
         className="absolute inset-0 rounded-full bg-radial from-violet-200/35 via-blue-400/15 to-transparent blur-2xl"
         animate={{
@@ -45,7 +47,7 @@ export function AssistantOrb({ state }: { state: AiState }) {
           key={index}
           className="absolute h-1.5 w-1.5 rounded-full bg-blue-100/70"
           style={{
-            transform: `rotate(${index * 25.7}deg) translateY(-164px)`,
+            transform: `rotate(${index * 25.7}deg) translateY(${particleOffset}px)`,
           }}
           animate={{ opacity: [0.25, 0.95, 0.25], scale: [0.8, 1.4, 0.8] }}
           transition={{ duration: 2.2, repeat: Infinity, delay: index * 0.09 }}
