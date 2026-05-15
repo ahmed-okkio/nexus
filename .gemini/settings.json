@@ -1,0 +1,20 @@
+{ 
+  "general": { 
+    "enableNotifications": true, 
+    "notificationMethod": "auto" 
+  }, 
+  "hooks": { 
+    "BeforeTool": [ 
+      { 
+        "matcher": "ask_user", 
+        "hooks": [ 
+          { 
+            "name": "notify-ask-user", 
+            "type": "command", 
+            "command": "powershell.exe -ExecutionPolicy Bypass -File .gemini/hooks/send-toast.ps1 'Input Required'" 
+          } 
+        ] 
+      } 
+    ] 
+  } 
+}
