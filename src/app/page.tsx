@@ -175,6 +175,26 @@ const normalizeTtsText = (input: string) =>
     .replace(/\s+/g, " ")
     .trim();
 
+const shouldSpeakEarly = (text: string, loading: boolean) => {
+  if (!text) return false;
+  if (!loading) return true;
+  const wordCount = text.trim().split(/\s+/).filter(Boolean).length;
+  const endsLikeSentence = /[.!?]["']?$/.test(text.trim());
+  return wordCount >= 7 && endsLikeSentence;
+};
+
+const splitForFastTts = (text: string) => {
+  const trimmed = text.trim();
+  if (!trimmed) return [] as string[];
+  const firstBreak = trimmed.search(/[.!?](\s|$)/);
+  if (firstBreak === -1 || trimmed.length < 120) {
+    return [trimmed];
+  }
+  const first = trimmed.slice(0, firstBreak + 1).trim();
+  const rest = trimmed.slice(firstBreak + 1).trim();
+  return rest ? [first, rest] : [first];
+};
+
 export default function Home() {
   const [state, setState] = useState<AiState>("idle");
   const [activeNav, setActiveNav] = useState<SidebarItem>("Home");
@@ -184,6 +204,10 @@ export default function Home() {
   const [statusMessage, setStatusMessage] = useState("Ready");
   const [briefingData, setBriefingData] = useState<BriefingResponse | null>(null);
   const [snapshotCounts, setSnapshotCounts] = useState({ dueCount: 0, upcomingLabel: "No upcoming meetings", noteCount: 0 });
+  const [snapshotMeta, setSnapshotMeta] = useState({
+    priorityLabel: "No high-priority tasks",
+    notePreview: "No recent notes",
+  });
   const [speakEnabled, setSpeakEnabled] = useState(true);
   const [tasksCache, setTasksCache] = useState<TaskLite[]>([]);
   const [notesCache, setNotesCache] = useState<NoteLite[]>([]);
@@ -221,6 +245,14 @@ export default function Home() {
   const orbAnchorRef = useRef<HTMLDivElement | null>(null);
   const processedToolResultMessageIdRef = useRef("");
   const [showMiniOrb, setShowMiniOrb] = useState(false);
+  const [wakePulseToken, setWakePulseToken] = useState(0);
+  const [wakeFlashActive, setWakeFlashActive] = useState(false);
+  const wakeFlashTimeoutRef = useRef<number | null>(null);
+  const [orbVoicePulse, setOrbVoicePulse] = useState(0);
+  const [visibleAssistantReply, setVisibleAssistantReply] = useState("");
+  const ttsPulseRafRef = useRef<number | null>(null);
+  const ttsAudioContextRef = useRef<AudioContext | null>(null);
+  const ttsAnalyserRef = useRef<AnalyserNode | null>(null);
   const activePanels = useMemo(() => {
     const base = panels[state];
     return base.map((panel) => {
@@ -231,12 +263,12 @@ export default function Home() {
         ...panel,
         badge: timeframe,
         items: [
-          { label: `${snapshotCounts.dueCount} tasks due ${timeframe.toLowerCase()}`, sublabel: "AI-prioritized from your workspace" },
-          { label: snapshotCounts.upcomingLabel, sublabel: `${snapshotCounts.noteCount} recent notes available` },
+          { label: `${snapshotCounts.dueCount} tasks due ${timeframe.toLowerCase()}`, sublabel: snapshotMeta.priorityLabel },
+          { label: snapshotCounts.upcomingLabel, sublabel: snapshotMeta.notePreview },
         ],
       };
     });
-  }, [snapshotCounts, state, timeframe]);
+  }, [snapshotCounts, snapshotMeta, state, timeframe]);
   const { messages, sendMessage, status } = useChat({
     transport: new DefaultChatTransport({ api: "/api/chat" }),
   });
@@ -259,11 +291,11 @@ export default function Home() {
   }, [messages]);
 
   const headlineText = useMemo(() => {
-    if (isChatLoading && !assistantReply) {
+    if (isChatLoading && !visibleAssistantReply) {
       return "Thinking through your request...";
     }
-    return assistantReply || "How can I help today?";
-  }, [assistantReply, isChatLoading]);
+    return visibleAssistantReply || "How can I help today?";
+  }, [visibleAssistantReply, isChatLoading]);
 
   const setTransientStatus = (message: string) => {
     setStatusMessage(message);
@@ -360,40 +392,55 @@ export default function Home() {
       setBriefingData(briefingJson.success ? briefingJson : null);
       const tasks = (tasksJson.tasks ?? []).filter((task) => !task.deletedAt && task.status !== "completed");
       setTasksCache(tasksJson.tasks ?? []);
-      setNotesCache(notesJson.notes ?? []);
+      const notes = notesJson.notes ?? [];
+      setNotesCache(notes);
       setRemindersData(remindersJson.success ? remindersJson : null);
       const now = new Date();
-      const end = new Date(now);
+      const rangeStart = new Date(now);
+      const rangeEnd = new Date(now);
       if (activeTimeframe === "Today") {
-        end.setHours(23, 59, 59, 999);
+        rangeStart.setHours(0, 0, 0, 0);
+        rangeEnd.setHours(23, 59, 59, 999);
       } else if (activeTimeframe === "Tomorrow") {
-        now.setDate(now.getDate() + 1);
-        now.setHours(0, 0, 0, 0);
-        end.setDate(end.getDate() + 1);
-        end.setHours(23, 59, 59, 999);
+        rangeStart.setDate(rangeStart.getDate() + 1);
+        rangeStart.setHours(0, 0, 0, 0);
+        rangeEnd.setDate(rangeEnd.getDate() + 1);
+        rangeEnd.setHours(23, 59, 59, 999);
       } else {
-        end.setDate(end.getDate() + 7);
+        rangeStart.setHours(0, 0, 0, 0);
+        rangeEnd.setDate(rangeEnd.getDate() + 7);
+        rangeEnd.setHours(23, 59, 59, 999);
       }
       const dueCount = tasks.filter((task) => {
         if (!task.dueDate) return false;
         const due = new Date(task.dueDate);
-        return due >= now && due <= end;
+        return due >= rangeStart && due <= rangeEnd;
       }).length;
       const noteCount = briefingJson.success ? briefingJson.summary.recentNotesCount : 0;
+      const highPriority = tasks.filter((task) => task.status === "pending" && task.priority === "high");
+      const latestNote = notes[0]?.content?.trim();
       setSnapshotCounts({
         dueCount,
         upcomingLabel: briefingJson.success && briefingJson.data.dueToday.length > 0
           ? `${briefingJson.data.dueToday[0].title} is coming up`
-          : "No upcoming meetings",
+          : "No due tasks in this window",
         noteCount,
+      });
+      setSnapshotMeta({
+        priorityLabel:
+          highPriority.length > 0
+            ? `${highPriority.length} high-priority ${highPriority.length === 1 ? "task" : "tasks"}`
+            : "No high-priority tasks",
+        notePreview: latestNote ? `Latest note: ${latestNote.slice(0, 58)}${latestNote.length > 58 ? "..." : ""}` : "No recent notes",
       });
     } catch {
       setSnapshotCounts({ dueCount: 0, upcomingLabel: "Data unavailable right now", noteCount: 0 });
+      setSnapshotMeta({ priorityLabel: "Snapshot unavailable", notePreview: "Snapshot unavailable" });
       setRemindersData(null);
     }
   }, []);
 
-  const speakReply = useCallback(async (text: string) => {
+  const speakReply = useCallback(async (text: string, onFirstAudioReady?: () => void) => {
     if (!speakEnabled || typeof window === "undefined") {
       return;
     }
@@ -401,45 +448,115 @@ export default function Home() {
     if (!ttsText) {
       return;
     }
+    const chunks = splitForFastTts(ttsText);
+    if (chunks.length === 0) {
+      return;
+    }
 
     try {
-      const response = await fetch("/api/voice/tts", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: ttsText }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`TTS request failed (${response.status})`);
-      }
-
-      const wavBlob = await response.blob();
-      if (playbackAudioRef.current) {
-        playbackAudioRef.current.pause();
-        playbackAudioRef.current = null;
-      }
-      const audioUrl = URL.createObjectURL(wavBlob);
-      const audio = new Audio(audioUrl);
-      audio.volume = NEXUS_VOICE_VOLUME;
-      playbackAudioRef.current = audio;
-      audio.onended = () => {
+      let didSignalReady = false;
+      const playChunk = async (chunkText: string) => {
+        const response = await fetch("/api/voice/tts", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text: chunkText }),
+        });
+        if (!response.ok) {
+          throw new Error(`TTS request failed (${response.status})`);
+        }
+        const wavBlob = await response.blob();
+        if (playbackAudioRef.current) {
+          playbackAudioRef.current.pause();
+          playbackAudioRef.current = null;
+        }
+        const audioUrl = URL.createObjectURL(wavBlob);
+        const audio = new Audio(audioUrl);
+        audio.volume = NEXUS_VOICE_VOLUME;
+        if (!didSignalReady) {
+          await new Promise<void>((resolve) => {
+            const markReady = () => {
+              if (!didSignalReady) {
+                didSignalReady = true;
+                onFirstAudioReady?.();
+              }
+              resolve();
+            };
+            if (audio.readyState >= 3) {
+              markReady();
+              return;
+            }
+            audio.oncanplaythrough = () => markReady();
+            audio.onerror = () => resolve();
+          });
+        }
+        try {
+          const audioContext = new AudioContext();
+          const analyser = audioContext.createAnalyser();
+          analyser.fftSize = 256;
+          analyser.smoothingTimeConstant = 0.68;
+          const source = audioContext.createMediaElementSource(audio);
+          source.connect(analyser);
+          analyser.connect(audioContext.destination);
+          if (audioContext.state === "suspended") {
+            await audioContext.resume();
+          }
+          ttsAudioContextRef.current?.close().catch(() => {});
+          ttsAudioContextRef.current = audioContext;
+          ttsAnalyserRef.current = analyser;
+          if (ttsPulseRafRef.current) {
+            window.cancelAnimationFrame(ttsPulseRafRef.current);
+          }
+          const bins = new Uint8Array(analyser.frequencyBinCount);
+          const tick = () => {
+            const currentAnalyser = ttsAnalyserRef.current;
+            if (!currentAnalyser) {
+              return;
+            }
+            currentAnalyser.getByteFrequencyData(bins);
+            let sum = 0;
+            for (let i = 0; i < bins.length; i += 1) {
+              sum += bins[i];
+            }
+            const avg = sum / bins.length;
+            const normalized = Math.min(1, avg / 48);
+            const speakingFloor = audio.paused || audio.ended ? 0 : 0.32;
+            setOrbVoicePulse((prev) => prev * 0.14 + Math.max(normalized, speakingFloor) * 0.86);
+            ttsPulseRafRef.current = window.requestAnimationFrame(tick);
+          };
+          tick();
+        } catch {
+          // no-op
+        }
+        playbackAudioRef.current = audio;
+        setOrbVoicePulse(0.3);
+        await new Promise<void>((resolve, reject) => {
+          audio.onended = () => resolve();
+          audio.onerror = () => reject(new Error("Audio playback failed"));
+          void audio.play().catch(() => reject(new Error("Audio playback failed")));
+        });
+        if (ttsPulseRafRef.current) {
+          window.cancelAnimationFrame(ttsPulseRafRef.current);
+          ttsPulseRafRef.current = null;
+        }
+        ttsAnalyserRef.current = null;
+        ttsAudioContextRef.current?.close().catch(() => {});
+        ttsAudioContextRef.current = null;
+        setOrbVoicePulse(0);
         URL.revokeObjectURL(audioUrl);
         if (playbackAudioRef.current === audio) {
           playbackAudioRef.current = null;
         }
       };
-      audio.onerror = () => {
-        URL.revokeObjectURL(audioUrl);
-        if (playbackAudioRef.current === audio) {
-          playbackAudioRef.current = null;
-        }
-      };
-      await audio.play();
+
+      for (const chunk of chunks) {
+        await playChunk(chunk);
+      }
       return;
     } catch {
       if (!("speechSynthesis" in window)) {
         return;
       }
+      onFirstAudioReady?.();
       const utterance = new SpeechSynthesisUtterance(ttsText);
       utterance.rate = 1;
       utterance.pitch = 1;
@@ -452,7 +569,7 @@ export default function Home() {
     if (!assistantReply || !assistantReplyMessageId) {
       return;
     }
-    if (status !== "ready") {
+    if (!shouldSpeakEarly(assistantReply, isChatLoading)) {
       return;
     }
     if (assistantReplyMessageId === lastSpokenAssistantMessageIdRef.current) {
@@ -461,11 +578,14 @@ export default function Home() {
     if (assistantReply === lastSpokenReplyRef.current) {
       return;
     }
+    setVisibleAssistantReply("");
     lastSpokenAssistantMessageIdRef.current = assistantReplyMessageId;
     lastSpokenReplyRef.current = assistantReply;
     setTransientStatus("Assistant replied");
-    void speakReply(assistantReply);
-  }, [assistantReply, assistantReplyMessageId, speakReply, status]);
+    void speakReply(assistantReply, () => {
+      setVisibleAssistantReply(assistantReply);
+    });
+  }, [assistantReply, assistantReplyMessageId, isChatLoading, speakReply, status]);
 
   useEffect(() => {
     if (status !== "ready" || !shouldResumeListeningRef.current || !micEnabledRef.current) {
@@ -609,6 +729,16 @@ export default function Home() {
         setVoiceEnergy(0.2);
         return;
       }
+      if (wakeDetected && !wakeDetectedRef.current) {
+        setWakePulseToken((prev) => prev + 1);
+        setWakeFlashActive(true);
+        if (wakeFlashTimeoutRef.current) {
+          window.clearTimeout(wakeFlashTimeoutRef.current);
+        }
+        wakeFlashTimeoutRef.current = window.setTimeout(() => {
+          setWakeFlashActive(false);
+        }, 900);
+      }
       wakeDetectedRef.current = true;
       const delta = Math.max(0, rawTranscript.length - lastRawTranscriptRef.current.length);
       const normalized = Math.min(1, delta / 6 + 0.35);
@@ -663,6 +793,18 @@ export default function Home() {
       responseTimeoutRef.current = window.setTimeout(() => {
         setState("idle");
       }, 2600);
+
+      // Keep the wake-word listener alive unless we intentionally paused it
+      // while sending a command and waiting for assistant completion.
+      if (micEnabledRef.current && !pauseRecognitionRef.current) {
+        window.setTimeout(() => {
+          try {
+            recognition.start();
+          } catch {
+            // no-op
+          }
+        }, 140);
+      }
     };
 
     recognitionRef.current = recognition;
@@ -687,10 +829,21 @@ export default function Home() {
       if (statusTimeoutRef.current) {
         window.clearTimeout(statusTimeoutRef.current);
       }
+      if (wakeFlashTimeoutRef.current) {
+        window.clearTimeout(wakeFlashTimeoutRef.current);
+      }
       if (playbackAudioRef.current) {
         playbackAudioRef.current.pause();
         playbackAudioRef.current = null;
       }
+      if (ttsPulseRafRef.current) {
+        window.cancelAnimationFrame(ttsPulseRafRef.current);
+        ttsPulseRafRef.current = null;
+      }
+      ttsAnalyserRef.current = null;
+      ttsAudioContextRef.current?.close().catch(() => {});
+      ttsAudioContextRef.current = null;
+      setOrbVoicePulse(0);
     };
   }, [sendMessage]);
 
@@ -778,8 +931,34 @@ export default function Home() {
             <p className="text-sm uppercase tracking-[0.35em] text-blue-100/60">Nexus OS</p>
           </div>
 
-          <div ref={orbAnchorRef}>
-            <AssistantOrb state={state} />
+          <div ref={orbAnchorRef} className="relative flex h-[260px] w-[260px] items-center justify-center sm:h-[360px] sm:w-[360px]">
+            <AnimatePresence initial={false} mode="wait">
+              {!showMiniOrb ? (
+                <motion.div
+                  key="main-orb"
+                  initial={{ opacity: 0.92, scale: 0.9, y: 10 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.82, y: -14 }}
+                  transition={{ duration: 0.26, ease: "easeOut" }}
+                >
+                  <AssistantOrb state={state} voicePulse={orbVoicePulse} />
+                </motion.div>
+              ) : (
+                <div className="h-[260px] w-[260px] sm:h-[360px] sm:w-[360px]" />
+              )}
+            </AnimatePresence>
+            <AnimatePresence>
+              {!showMiniOrb && wakeFlashActive ? (
+                <motion.div
+                  key={wakePulseToken}
+                  className="pointer-events-none absolute inset-0 rounded-full border border-violet-200/50"
+                  initial={{ scale: 0.78, opacity: 0.95 }}
+                  animate={{ scale: 1.32, opacity: 0 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.78, ease: "easeOut" }}
+                />
+              ) : null}
+            </AnimatePresence>
           </div>
           <div className="mt-8 w-full">
             <VoiceDock
@@ -793,11 +972,12 @@ export default function Home() {
               displayText={headlineText}
               isResponding={isChatLoading}
               onMicToggle={handleMicToggle}
+              wakeFlashActive={wakeFlashActive}
             />
           </div>
-          {assistantReply ? (
+          {visibleAssistantReply ? (
             <div className="mx-auto mt-6 w-full max-w-3xl rounded-2xl border border-blue-200/20 bg-white/5 px-5 py-4 text-center text-blue-50/90 backdrop-blur-xl">
-              {assistantReply}
+              {visibleAssistantReply}
             </div>
           ) : null}
           {isChatLoading ? (
@@ -957,10 +1137,10 @@ export default function Home() {
       <AnimatePresence>
         {showMiniOrb ? (
           <motion.div
-            initial={{ opacity: 0, x: 28, scale: 0.86 }}
+            initial={{ opacity: 0, x: 38, scale: 0.72 }}
             animate={{ opacity: 1, x: 0, scale: 1 }}
-            exit={{ opacity: 0, x: 28, scale: 0.86 }}
-            transition={{ duration: 0.28, ease: "easeOut" }}
+            exit={{ opacity: 0, x: 38, scale: 0.72 }}
+            transition={{ duration: 0.26, ease: "easeOut" }}
             className="fixed right-6 top-1/2 z-40 hidden w-[170px] -translate-y-1/2 xl:block"
           >
             <button
@@ -971,7 +1151,7 @@ export default function Home() {
               className="mx-auto block rounded-full border border-blue-100/30 bg-[#0a132d]/70 p-1 shadow-[0_0_35px_rgba(99,136,255,0.35)] backdrop-blur-xl"
               aria-label="Focus assistant orb"
             >
-              <AssistantOrb state={state} compact />
+              <AssistantOrb state={state} compact voicePulse={orbVoicePulse} />
             </button>
             <div className="mt-2 rounded-xl border border-blue-100/20 bg-[#0a132d]/75 px-3 py-2 text-center text-xs text-blue-50/90 backdrop-blur-xl">
               {assistantReply || "Nexus is listening..."}

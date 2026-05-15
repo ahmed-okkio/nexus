@@ -15,9 +15,8 @@ const MAX_TEXT_LENGTH = 1200;
 
 const runPiper = async (text: string) => {
   const cwd = process.cwd();
-  // Fixed paths: assets are in the root /bin directory, not inside nexus/
-  const piperExe = path.join(cwd, "..", "bin", "piper", "piper", "piper.exe");
-  const modelPath = path.join(cwd, "..", "bin", "piper", "jarvis-high.onnx");
+  const piperExe = path.join(cwd, "bin", "piper", "piper", "piper.exe");
+  const modelPath = path.join(cwd, "bin", "piper", "jarvis-high.onnx");
   const outputFile = path.join(os.tmpdir(), `nexus-${randomUUID()}.wav`);
 
   await fs.access(piperExe);

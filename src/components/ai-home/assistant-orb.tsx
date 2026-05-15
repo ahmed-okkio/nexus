@@ -10,16 +10,29 @@ const pulseByState: Record<AiState, number> = {
   responding: 1.15,
 };
 
-export function AssistantOrb({ state, compact = false }: { state: AiState; compact?: boolean }) {
+export function AssistantOrb({ state, compact = false, voicePulse = 0 }: { state: AiState; compact?: boolean; voicePulse?: number }) {
   const outerSize = compact ? "h-[120px] w-[120px] sm:h-[120px] sm:w-[120px]" : "h-[260px] w-[260px] sm:h-[360px] sm:w-[360px]";
   const particleOffset = compact ? -54 : -164;
+  const pulseBoost = Math.min(0.4, voicePulse * 0.4);
   return (
-    <div className={`relative flex items-center justify-center ${outerSize}`}>
+    <motion.div
+      className={`relative flex items-center justify-center ${outerSize}`}
+      animate={{ scale: 1 + voicePulse * 0.2 }}
+      transition={{ duration: 0.08, ease: "easeOut" }}
+    >
+      <motion.div
+        className="pointer-events-none absolute inset-[14%] rounded-full bg-radial from-violet-200/35 via-blue-300/20 to-transparent blur-xl"
+        animate={{
+          scale: 1 + voicePulse * 0.55,
+          opacity: 0.2 + voicePulse * 0.78,
+        }}
+        transition={{ duration: 0.08, ease: "easeOut" }}
+      />
       <motion.div
         className="absolute inset-0 rounded-full bg-radial from-violet-200/35 via-blue-400/15 to-transparent blur-2xl"
         animate={{
-          scale: [1, pulseByState[state], 1],
-          opacity: state === "idle" ? [0.4, 0.55, 0.4] : [0.6, 0.95, 0.6],
+          scale: [1, pulseByState[state] + pulseBoost, 1],
+          opacity: state === "idle" ? [0.4, 0.55 + voicePulse * 0.2, 0.4] : [0.6, 0.95 + voicePulse * 0.2, 0.6],
         }}
         transition={{ duration: 2.8, repeat: Infinity, ease: "easeInOut" }}
       />
@@ -57,10 +70,10 @@ export function AssistantOrb({ state, compact = false }: { state: AiState; compa
       <motion.div
         className="relative h-[64%] w-[64%] rounded-full bg-linear-to-br from-blue-100 via-indigo-300 to-violet-300 shadow-[0_0_80px_rgba(124,151,255,0.5)]"
         animate={{
-          scale: [1, 1.06, 1],
+          scale: [1, 1.06 + pulseBoost, 1],
           boxShadow: [
             "0 0 45px rgba(124,151,255,0.45)",
-            "0 0 85px rgba(146,128,255,0.65)",
+            `0 0 ${85 + Math.round(voicePulse * 64)}px rgba(146,128,255,0.72)`,
             "0 0 45px rgba(124,151,255,0.45)",
           ],
         }}
@@ -69,6 +82,6 @@ export function AssistantOrb({ state, compact = false }: { state: AiState; compa
         <div className="absolute inset-[10%] rounded-full bg-radial from-white/90 via-indigo-100/30 to-indigo-900/65" />
         <div className="absolute inset-[28%] rounded-full bg-white/40 blur-xl" />
       </motion.div>
-    </div>
+    </motion.div>
   );
 }

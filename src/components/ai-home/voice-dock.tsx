@@ -30,6 +30,7 @@ export function VoiceDock({
   displayText,
   isResponding,
   onMicToggle,
+  wakeFlashActive,
 }: {
   state: AiState;
   isListening: boolean;
@@ -41,6 +42,7 @@ export function VoiceDock({
   displayText: string;
   isResponding: boolean;
   onMicToggle: () => void;
+  wakeFlashActive: boolean;
 }) {
   const [lineIndex, setLineIndex] = useState(0);
   const [visibleLine, setVisibleLine] = useState("How can I help today?");
@@ -102,6 +104,7 @@ export function VoiceDock({
     return () => window.clearTimeout(holdTimer);
   }, [lineIndex, lines]);
 
+  const listeningVisual = state === "listening" || isVoiceActive || wakeFlashActive;
   return (
     <div className="mx-auto w-full max-w-3xl space-y-5">
       <div className="text-center">
@@ -133,14 +136,51 @@ export function VoiceDock({
         <p className="mt-3 text-xl text-blue-100/70">{helperCopy[state]}</p>
       </div>
 
-      <div className="rounded-[2.6rem] border border-blue-200/35 bg-linear-to-r from-blue-500/14 via-transparent to-violet-500/15 p-3 backdrop-blur-xl">
-        <div className="flex items-center gap-4 rounded-[2.2rem] border border-white/12 bg-black/20 px-5 py-4">
+      <motion.div
+        className="relative rounded-[2.6rem] border border-blue-200/35 bg-linear-to-r from-blue-500/14 via-transparent to-violet-500/15 p-3 backdrop-blur-xl"
+        animate={
+          listeningVisual
+            ? {
+                boxShadow: "0 0 42px rgba(120,150,255,0.45)",
+                borderColor: "rgba(196,181,253,0.8)",
+              }
+            : { boxShadow: "0 0 0 rgba(0,0,0,0)", borderColor: "rgba(191,219,254,0.35)" }
+        }
+        transition={{ duration: 0.25, ease: "easeOut" }}
+      >
+        <AnimatePresence>
+          {listeningVisual ? (
+            <motion.div
+              key="listening-activation-pulse"
+              className="pointer-events-none absolute inset-0 rounded-[2.6rem] border border-violet-200/70"
+              initial={{ opacity: 0.95, scale: 0.98 }}
+              animate={{ opacity: 0, scale: 1.04 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.45, ease: "easeOut" }}
+            />
+          ) : null}
+        </AnimatePresence>
+        <motion.div
+          className="flex items-center gap-4 rounded-[2.2rem] border border-white/12 bg-black/20 px-5 py-4"
+          animate={
+            listeningVisual
+              ? {
+                  boxShadow: "inset 0 0 36px rgba(140,165,255,0.25)",
+                }
+              : { boxShadow: "inset 0 0 0 rgba(0,0,0,0)" }
+          }
+          transition={{ duration: 0.25, ease: "easeOut" }}
+        >
           <div className="flex-1">
             <div className="mb-2 flex items-center gap-2">
               <Sparkles size={14} className="text-blue-100/70" />
               <span className="text-sm uppercase tracking-[0.26em] text-blue-100/70">{stateLabel[state]}</span>
             </div>
-            <motion.div className="flex h-10 w-full items-end justify-center gap-1.5" animate={{ opacity: isVoiceActive ? 1 : 0.55 }}>
+            <motion.div
+              className="flex h-10 w-full items-end justify-center gap-1.5"
+              animate={{ opacity: listeningVisual ? 1 : 0.55, scale: listeningVisual ? 1.02 : 1 }}
+              transition={{ duration: 0.2, ease: "easeOut" }}
+            >
               {Array.from({ length: 34 }).map((_, i) => (
                 <motion.span
                   key={i}
@@ -171,8 +211,8 @@ export function VoiceDock({
             {micEnabled ? <Mic size={16} /> : <MicOff size={16} />}
             {micEnabled ? "Mic on" : "Mic muted"}
           </button>
-        </div>
-      </div>
+        </motion.div>
+      </motion.div>
 
       <p className="text-center text-sm text-blue-100/65">
         {isSupported ? "Always listening. Start commands with Nexus." : "Speech recognition is not supported in this browser."}{" "}
