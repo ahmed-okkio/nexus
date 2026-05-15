@@ -15,8 +15,9 @@ const MAX_TEXT_LENGTH = 1200;
 
 const runPiper = async (text: string) => {
   const cwd = process.cwd();
-  const piperExe = path.join(cwd, "bin", "piper", "piper", "piper.exe");
-  const modelPath = path.join(cwd, "bin", "piper", "jarvis-high.onnx");
+  // Fixed paths: assets are in the root /bin directory, not inside nexus/
+  const piperExe = path.join(cwd, "..", "bin", "piper", "piper", "piper.exe");
+  const modelPath = path.join(cwd, "..", "bin", "piper", "jarvis-high.onnx");
   const outputFile = path.join(os.tmpdir(), `nexus-${randomUUID()}.wav`);
 
   await fs.access(piperExe);
@@ -25,7 +26,7 @@ const runPiper = async (text: string) => {
   await new Promise<void>((resolve, reject) => {
     const child = spawn(
       piperExe,
-      ["--model", modelPath, "--output_file", outputFile],
+      ["--model", modelPath, "--output_file", outputFile, "--quiet"],
       {
         cwd: path.dirname(piperExe),
         windowsHide: true,
