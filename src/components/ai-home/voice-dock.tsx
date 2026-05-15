@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { motion } from "framer-motion";
-import { Sparkles } from "lucide-react";
+import { AnimatePresence, motion } from "framer-motion";
+import { Mic, MicOff, Sparkles } from "lucide-react";
 import type { AiState } from "./types";
 
 const stateLabel: Record<AiState, string> = {
@@ -24,23 +24,28 @@ export function VoiceDock({
   isListening,
   isVoiceActive,
   voiceEnergy,
+  micEnabled,
   isSupported,
   transcript,
   displayText,
   isResponding,
+  onMicToggle,
 }: {
   state: AiState;
   isListening: boolean;
   isVoiceActive: boolean;
   voiceEnergy: number;
+  micEnabled: boolean;
   isSupported: boolean;
   transcript: string;
   displayText: string;
   isResponding: boolean;
+  onMicToggle: () => void;
 }) {
-  const [animatedText, setAnimatedText] = useState("How can I help today?");
   const [lineIndex, setLineIndex] = useState(0);
-  const [isDeleting, setIsDeleting] = useState(false);
+  const [visibleLine, setVisibleLine] = useState("How can I help today?");
+  const [showLine, setShowLine] = useState(true);
+  const [finalLineSettled, setFinalLineSettled] = useState(false);
   const targetText = useMemo(() => displayText.trim() || "How can I help today?", [displayText]);
   const lines = useMemo(() => {
     const words = targetText.split(/\s+/).filter(Boolean);
@@ -63,57 +68,68 @@ export function VoiceDock({
   }, [targetText]);
 
   useEffect(() => {
-    const timer = window.setTimeout(() => {
+    const resetTimer = window.setTimeout(() => {
       setLineIndex(0);
-      setAnimatedText("");
-      setIsDeleting(false);
+      setVisibleLine(lines[0] ?? "How can I help today?");
+      setShowLine(true);
+      setFinalLineSettled(lines.length <= 1);
     }, 0);
-    return () => window.clearTimeout(timer);
+    return () => window.clearTimeout(resetTimer);
   }, [lines]);
 
   useEffect(() => {
-    const activeLine = lines[lineIndex] ?? lines[0] ?? "";
-    if (!activeLine) {
+    const currentLine = lines[lineIndex];
+    if (!currentLine) {
       return;
     }
+    if (lineIndex === lines.length - 1) {
+      const settleTimer = window.setTimeout(() => {
+        setFinalLineSettled(true);
+      }, 460);
+      return () => window.clearTimeout(settleTimer);
+    }
 
-    const timer = window.setTimeout(() => {
-      if (isDeleting) {
-        const nextText = animatedText.slice(0, -1);
-        setAnimatedText(nextText);
-        if (nextText.length === 0) {
-          setIsDeleting(false);
-          setLineIndex((prev) => (prev + 1) % lines.length);
-        }
-        return;
-      }
+    const holdTimer = window.setTimeout(() => {
+      setShowLine(false);
+      const nextLineTimer = window.setTimeout(() => {
+        setLineIndex((prev) => prev + 1);
+        setVisibleLine(lines[lineIndex + 1] ?? currentLine);
+        setShowLine(true);
+      }, 170);
+      return () => window.clearTimeout(nextLineTimer);
+    }, 1450);
 
-      if (animatedText.length < activeLine.length) {
-        setAnimatedText(activeLine.slice(0, animatedText.length + 1));
-        return;
-      }
-
-      if (lines.length > 1) {
-        setIsDeleting(true);
-      }
-    }, isDeleting ? 24 : animatedText.length < activeLine.length ? 52 : 1700);
-
-    return () => window.clearTimeout(timer);
-  }, [animatedText, isDeleting, lineIndex, lines]);
+    return () => window.clearTimeout(holdTimer);
+  }, [lineIndex, lines]);
 
   return (
     <div className="mx-auto w-full max-w-3xl space-y-5">
       <div className="text-center">
-        <motion.p
-          key={targetText}
-          initial={{ opacity: 0.2, y: 6 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.35, ease: "easeOut" }}
-          className="min-h-[7.5rem] text-5xl font-semibold tracking-tight text-white sm:min-h-[8.25rem] sm:text-6xl"
-        >
-          {animatedText}
-          {isResponding ? <span className="ml-1 inline-block animate-pulse text-blue-200">|</span> : null}
-        </motion.p>
+        <div className="relative min-h-[7.5rem] sm:min-h-[8.25rem]">
+          <AnimatePresence mode="wait">
+            {showLine ? (
+              <motion.p
+                key={`${lineIndex}-${visibleLine}`}
+                initial={{ opacity: 0, y: 26, filter: "blur(10px)", scale: 0.985 }}
+                animate={{ opacity: 1, y: 0, filter: "blur(0px)", scale: 1 }}
+                exit={{ opacity: 0, y: -12, filter: "blur(7px)", scale: 0.985 }}
+                transition={{ duration: 0.46, ease: [0.19, 1, 0.22, 1] }}
+                className="text-5xl font-semibold tracking-tight text-white sm:text-6xl"
+              >
+                {visibleLine}
+                {isResponding ? <span className="ml-1 inline-block animate-pulse text-blue-200">|</span> : null}
+              </motion.p>
+            ) : null}
+          </AnimatePresence>
+          {finalLineSettled ? (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.97 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.55, ease: "easeOut" }}
+              className="pointer-events-none absolute inset-0 rounded-2xl bg-radial from-blue-200/20 via-transparent to-transparent blur-xl"
+            />
+          ) : null}
+        </div>
         <p className="mt-3 text-xl text-blue-100/70">{helperCopy[state]}</p>
       </div>
 
@@ -143,6 +159,18 @@ export function VoiceDock({
               ))}
             </motion.div>
           </div>
+          <button
+            type="button"
+            onClick={onMicToggle}
+            className={`flex items-center gap-2 rounded-2xl border px-4 py-3 text-sm transition ${
+              micEnabled
+                ? "border-emerald-200/30 bg-emerald-300/10 text-emerald-50 hover:bg-emerald-300/15"
+                : "border-white/15 bg-white/5 text-blue-100/80 hover:bg-white/10"
+            }`}
+          >
+            {micEnabled ? <Mic size={16} /> : <MicOff size={16} />}
+            {micEnabled ? "Mic on" : "Mic muted"}
+          </button>
         </div>
       </div>
 
@@ -155,7 +183,7 @@ export function VoiceDock({
       </p>
       {isSupported ? (
         <p className="text-center text-xs text-blue-100/55">
-          Status: {state === "listening" ? "Listening after wake word" : isListening ? "Idle - waiting for Nexus" : "Reconnecting listener"}
+          Status: {micEnabled ? (state === "listening" ? "Listening after wake word" : isListening ? "Idle - waiting for Nexus" : "Reconnecting listener") : "Microphone muted"}
         </p>
       ) : null}
       {transcript ? (

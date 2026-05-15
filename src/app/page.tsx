@@ -172,6 +172,7 @@ export default function Home() {
   const [isListening, setIsListening] = useState(false);
   const [isVoiceActive, setIsVoiceActive] = useState(false);
   const [voiceEnergy, setVoiceEnergy] = useState(0.25);
+  const [micEnabled, setMicEnabled] = useState(true);
   const [transcript, setTranscript] = useState("");
   const [speechError, setSpeechError] = useState("");
   const recognitionRef = useRef<SpeechRecognitionType | null>(null);
@@ -186,8 +187,10 @@ export default function Home() {
   const pauseRecognitionRef = useRef(false);
   const voiceActivityTimeoutRef = useRef<number | null>(null);
   const wakeDetectedRef = useRef(false);
+  const shouldResumeListeningRef = useRef(false);
   const workspacePanelRef = useRef<HTMLDivElement | null>(null);
   const playbackAudioRef = useRef<HTMLAudioElement | null>(null);
+  const micEnabledRef = useRef(true);
   const activePanels = useMemo(() => {
     const base = panels[state];
     return base.map((panel) => {
@@ -243,6 +246,29 @@ export default function Home() {
     setShowWorkspacePanel(item !== "Home");
     setTransientStatus(item === "Home" ? "Returned to assistant view" : `Opened ${item}`);
   }, []);
+
+  const handleMicToggle = () => {
+    const nextEnabled = !micEnabledRef.current;
+    micEnabledRef.current = nextEnabled;
+    setMicEnabled(nextEnabled);
+    if (nextEnabled) {
+      setSpeechError("");
+      pauseRecognitionRef.current = false;
+      try {
+        recognitionRef.current?.start();
+      } catch {
+        // no-op
+      }
+      return;
+    }
+    recognitionRef.current?.stop();
+    shouldResumeListeningRef.current = false;
+    setIsListening(false);
+    setIsVoiceActive(false);
+    setVoiceEnergy(0.2);
+    setState("idle");
+    setSpeechError("");
+  };
 
   useEffect(() => {
     const lastAssistant = [...messages].reverse().find((message) => message.role === "assistant");
@@ -377,6 +403,21 @@ export default function Home() {
   }, [assistantReply, speakReply]);
 
   useEffect(() => {
+    if (status !== "ready" || !shouldResumeListeningRef.current || !micEnabledRef.current) {
+      return;
+    }
+    shouldResumeListeningRef.current = false;
+    window.setTimeout(() => {
+      pauseRecognitionRef.current = false;
+      try {
+        recognitionRef.current?.start();
+      } catch {
+        // no-op
+      }
+    }, 120);
+  }, [status]);
+
+  useEffect(() => {
     const timer = window.setTimeout(() => {
       void fetchSnapshotData(timeframe);
     }, 0);
@@ -432,7 +473,6 @@ export default function Home() {
       setIsListening(true);
       setState("idle");
       setTranscript("");
-      setSpeechError("");
       commandRef.current = "";
       lastRawTranscriptRef.current = "";
       wakeDetectedRef.current = false;
@@ -454,6 +494,7 @@ export default function Home() {
       setIsVoiceActive(false);
       setState("responding");
       setTransientStatus(`Sending command: "${commandToSend}"`);
+      shouldResumeListeningRef.current = true;
       lastSpokenReplyRef.current = "";
       void sendMessage({ text: commandToSend });
       window.dispatchEvent(
@@ -512,12 +553,18 @@ export default function Home() {
       }
     };
 
-    recognition.onerror = () => {
+    recognition.onerror = (event) => {
       setIsListening(false);
       setIsVoiceActive(false);
       setVoiceEnergy(0.25);
       setState("idle");
-      setSpeechError("Microphone error. Check browser mic permissions and retry.");
+
+      if (event.error === "no-speech") {
+        setSpeechError("");
+        return;
+      }
+
+      setSpeechError(`Microphone error: ${event.error}. Check browser mic permissions and retry.`);
     };
 
     recognition.onend = () => {
@@ -534,16 +581,6 @@ export default function Home() {
       responseTimeoutRef.current = window.setTimeout(() => {
         setState("idle");
       }, 2600);
-      if (shouldKeepListeningRef.current) {
-        window.setTimeout(() => {
-          pauseRecognitionRef.current = false;
-          try {
-            recognition.start();
-          } catch {
-            // no-op
-          }
-        }, 120);
-      }
     };
 
     recognitionRef.current = recognition;
@@ -666,10 +703,12 @@ export default function Home() {
               isListening={isListening}
               isVoiceActive={isVoiceActive}
               voiceEnergy={voiceEnergy}
+              micEnabled={micEnabled}
               isSupported={isSupported}
               transcript={transcript}
               displayText={headlineText}
               isResponding={isChatLoading}
+              onMicToggle={handleMicToggle}
             />
           </div>
           {assistantReply ? (
