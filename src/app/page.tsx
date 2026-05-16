@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { ChevronDown } from "lucide-react";
 import { useChat } from "@ai-sdk/react";
@@ -34,9 +34,11 @@ type SpeechRecognitionEventType = {
   }>;
 };
 
+type SpeechRecognitionConstructor = new () => SpeechRecognitionType;
+
 type SpeechWindow = Window & {
-  SpeechRecognition?: new () => SpeechRecognitionType;
-  webkitSpeechRecognition?: new () => SpeechRecognitionType;
+  SpeechRecognition?: SpeechRecognitionConstructor;
+  webkitSpeechRecognition?: SpeechRecognitionConstructor;
 };
 
 type Timeframe = "Today" | "Tomorrow" | "This Week";
@@ -59,6 +61,7 @@ type TaskLite = {
   id: string;
   title: string;
   status: string;
+  priority?: string;
   dueDate?: string;
   deletedAt?: string | null;
 };
@@ -195,6 +198,28 @@ const splitForFastTts = (text: string) => {
   return rest ? [first, rest] : [first];
 };
 
+const formatDateKey = (input: Date | string) => {
+  const date = typeof input === "string" ? new Date(input) : input;
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
+const formatInputDate = (date: Date) => formatDateKey(date);
+
+const getMonthDays = (date: Date) => {
+  const firstOfMonth = new Date(date.getFullYear(), date.getMonth(), 1);
+  const start = new Date(firstOfMonth);
+  start.setDate(firstOfMonth.getDate() - firstOfMonth.getDay());
+
+  return Array.from({ length: 42 }, (_, index) => {
+    const day = new Date(start);
+    day.setDate(start.getDate() + index);
+    return day;
+  });
+};
+
 export default function Home() {
   const [state, setState] = useState<AiState>("idle");
   const [activeNav, setActiveNav] = useState<SidebarItem>("Home");
@@ -212,6 +237,12 @@ export default function Home() {
   const [tasksCache, setTasksCache] = useState<TaskLite[]>([]);
   const [notesCache, setNotesCache] = useState<NoteLite[]>([]);
   const [remindersData, setRemindersData] = useState<SmartRemindersResponse | null>(null);
+  const [calendarDate, setCalendarDate] = useState(() => new Date());
+  const [reminderTitle, setReminderTitle] = useState("");
+  const [reminderDate, setReminderDate] = useState(() => formatInputDate(new Date()));
+  const [reminderTime, setReminderTime] = useState("09:00");
+  const [reminderError, setReminderError] = useState("");
+  const [isCreatingReminder, setIsCreatingReminder] = useState(false);
   const [isSupported] = useState(() => {
     if (typeof window === "undefined") {
       return true;
@@ -269,6 +300,24 @@ export default function Home() {
       };
     });
   }, [snapshotCounts, snapshotMeta, state, timeframe]);
+  const scheduledTasks = useMemo(
+    () =>
+      tasksCache
+        .filter((task) => !task.deletedAt && task.dueDate)
+        .sort((a, b) => new Date(a.dueDate ?? 0).getTime() - new Date(b.dueDate ?? 0).getTime()),
+    [tasksCache],
+  );
+  const calendarDays = useMemo(() => getMonthDays(calendarDate), [calendarDate]);
+  const tasksByDate = useMemo(() => {
+    return scheduledTasks.reduce<Record<string, TaskLite[]>>((acc, task) => {
+      if (!task.dueDate) {
+        return acc;
+      }
+      const key = formatDateKey(task.dueDate);
+      acc[key] = [...(acc[key] ?? []), task];
+      return acc;
+    }, {});
+  }, [scheduledTasks]);
   const { messages, sendMessage, status } = useChat({
     transport: new DefaultChatTransport({ api: "/api/chat" }),
   });
@@ -439,6 +488,53 @@ export default function Home() {
       setRemindersData(null);
     }
   }, []);
+
+  const handleCreateReminder = useCallback(async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const title = reminderTitle.trim();
+
+    if (!title) {
+      setReminderError("Add a reminder title first.");
+      return;
+    }
+
+    const dueDate = new Date(`${reminderDate}T${reminderTime || "09:00"}`);
+    if (Number.isNaN(dueDate.getTime())) {
+      setReminderError("Choose a valid reminder date and time.");
+      return;
+    }
+
+    setIsCreatingReminder(true);
+    setReminderError("");
+
+    try {
+      const response = await fetch("/api/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title,
+          description: "Calendar reminder",
+          priority: "medium",
+          dueDate: dueDate.toISOString(),
+        }),
+      });
+      const result = (await response.json()) as { success?: boolean; error?: string };
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || "Could not create reminder.");
+      }
+
+      setReminderTitle("");
+      setCalendarDate(new Date(dueDate.getFullYear(), dueDate.getMonth(), 1));
+      setStatusMessage("Reminder added to calendar");
+      window.dispatchEvent(new CustomEvent("tasks-updated"));
+      await fetchSnapshotData(timeframe);
+    } catch (error) {
+      setReminderError(error instanceof Error ? error.message : "Could not create reminder.");
+    } finally {
+      setIsCreatingReminder(false);
+    }
+  }, [fetchSnapshotData, reminderDate, reminderTime, reminderTitle, timeframe]);
 
   const speakReply = useCallback(async (text: string, onFirstAudioReady?: () => void) => {
     if (!speakEnabled || typeof window === "undefined") {
@@ -661,12 +757,12 @@ export default function Home() {
 
   useEffect(() => {
     const speechWindow = window as SpeechWindow;
-    const SpeechRecognitionImpl = speechWindow.SpeechRecognition ?? speechWindow.webkitSpeechRecognition;
+    const SpeechRecognitionImpl = (speechWindow.SpeechRecognition ?? speechWindow.webkitSpeechRecognition) as SpeechRecognitionConstructor | undefined;
     if (!SpeechRecognitionImpl) {
       return;
     }
 
-    const recognition = new SpeechRecognitionImpl();
+    const recognition: SpeechRecognitionType = new SpeechRecognitionImpl();
     recognition.lang = "en-US";
     recognition.interimResults = true;
     recognition.continuous = true;
@@ -1022,15 +1118,110 @@ export default function Home() {
                 </div>
               )}
               {activeNav === "Calendar" && (
-                <div className="space-y-3 rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-blue-100/80">
-                  <p className="font-medium text-blue-50">Upcoming Calendar and Due Dates ({timeframe})</p>
-                  {tasksCache.filter((task) => !!task.dueDate).slice(0, 6).map((task) => (
-                    <div key={task.id} className="rounded-xl border border-white/10 bg-black/15 p-3">
-                      <p className="text-blue-50">{task.title}</p>
-                      <p className="text-xs text-blue-100/70">{task.dueDate ? new Date(task.dueDate).toLocaleString() : "No date"}</p>
+                <div className="space-y-4 rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-blue-100/80">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                    <div>
+                      <p className="font-medium text-blue-50">Calendar and Reminders</p>
+                      <p className="text-xs text-blue-100/60">Scheduled tasks show up here automatically.</p>
                     </div>
-                  ))}
-                  {tasksCache.filter((task) => !!task.dueDate).length === 0 && <p>No scheduled items yet.</p>}
+                    <form onSubmit={handleCreateReminder} className="grid gap-2 sm:grid-cols-[minmax(180px,1fr)_140px_105px_auto]">
+                      <input
+                        value={reminderTitle}
+                        onChange={(event) => setReminderTitle(event.target.value)}
+                        placeholder="Reminder"
+                        className="h-10 rounded-xl border border-white/10 bg-black/20 px-3 text-sm text-blue-50 outline-none placeholder:text-blue-100/35 focus:border-blue-300/50"
+                      />
+                      <input
+                        type="date"
+                        value={reminderDate}
+                        onChange={(event) => setReminderDate(event.target.value)}
+                        className="h-10 rounded-xl border border-white/10 bg-black/20 px-3 text-sm text-blue-50 outline-none focus:border-blue-300/50"
+                      />
+                      <input
+                        type="time"
+                        value={reminderTime}
+                        onChange={(event) => setReminderTime(event.target.value)}
+                        className="h-10 rounded-xl border border-white/10 bg-black/20 px-3 text-sm text-blue-50 outline-none focus:border-blue-300/50"
+                      />
+                      <button
+                        type="submit"
+                        disabled={isCreatingReminder}
+                        className="h-10 rounded-xl border border-blue-200/20 bg-blue-300/15 px-4 text-sm font-medium text-blue-50 transition hover:bg-blue-300/25 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {isCreatingReminder ? "Adding" : "Add"}
+                      </button>
+                    </form>
+                  </div>
+                  {reminderError ? <p className="text-xs text-red-200">{reminderError}</p> : null}
+                  <div className="grid gap-4 lg:grid-cols-[1fr_260px]">
+                    <div className="rounded-2xl border border-white/10 bg-black/15 p-3">
+                      <div className="mb-3 flex items-center justify-between">
+                        <button
+                          type="button"
+                          onClick={() => setCalendarDate((current) => new Date(current.getFullYear(), current.getMonth() - 1, 1))}
+                          className="rounded-lg border border-white/10 px-3 py-1 text-xs text-blue-100 hover:bg-white/10"
+                        >
+                          Prev
+                        </button>
+                        <p className="text-sm font-medium text-blue-50">
+                          {calendarDate.toLocaleDateString(undefined, { month: "long", year: "numeric" })}
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => setCalendarDate((current) => new Date(current.getFullYear(), current.getMonth() + 1, 1))}
+                          className="rounded-lg border border-white/10 px-3 py-1 text-xs text-blue-100 hover:bg-white/10"
+                        >
+                          Next
+                        </button>
+                      </div>
+                      <div className="grid grid-cols-7 gap-1 text-center text-[11px] uppercase text-blue-100/45">
+                        {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
+                          <div key={day} className="py-1">{day}</div>
+                        ))}
+                      </div>
+                      <div className="grid grid-cols-7 gap-1">
+                        {calendarDays.map((day) => {
+                          const key = formatDateKey(day);
+                          const dayTasks = tasksByDate[key] ?? [];
+                          const isCurrentMonth = day.getMonth() === calendarDate.getMonth();
+                          const isToday = key === formatDateKey(new Date());
+
+                          return (
+                            <div
+                              key={key}
+                              className={`min-h-[82px] rounded-xl border p-2 text-left ${
+                                isToday
+                                  ? "border-blue-200/45 bg-blue-300/10"
+                                  : "border-white/10 bg-white/[0.03]"
+                              } ${isCurrentMonth ? "text-blue-50" : "text-blue-100/35"}`}
+                            >
+                              <div className="mb-1 text-xs">{day.getDate()}</div>
+                              <div className="space-y-1">
+                                {dayTasks.slice(0, 2).map((task) => (
+                                  <div key={task.id} className="truncate rounded-md bg-blue-200/15 px-2 py-1 text-[11px] text-blue-50">
+                                    {task.title}
+                                  </div>
+                                ))}
+                                {dayTasks.length > 2 ? (
+                                  <div className="text-[11px] text-blue-100/55">+{dayTasks.length - 2} more</div>
+                                ) : null}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    <div className="space-y-2 rounded-2xl border border-white/10 bg-black/15 p-3">
+                      <p className="text-xs font-medium uppercase text-blue-100/55">Upcoming</p>
+                      {scheduledTasks.slice(0, 8).map((task) => (
+                        <div key={task.id} className="rounded-xl border border-white/10 bg-white/[0.04] p-3">
+                          <p className="truncate text-blue-50">{task.title}</p>
+                          <p className="text-xs text-blue-100/65">{task.dueDate ? new Date(task.dueDate).toLocaleString() : "No date"}</p>
+                        </div>
+                      ))}
+                      {scheduledTasks.length === 0 ? <p>No scheduled reminders yet.</p> : null}
+                    </div>
+                  </div>
                 </div>
               )}
               {activeNav === "Messages" && (

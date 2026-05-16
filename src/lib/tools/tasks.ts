@@ -41,6 +41,20 @@ const convertNoteToTaskSchema = z.object({
   dueDate: z.string().optional().describe('Optional due date in ISO format (YYYY-MM-DD)'),
 });
 
+const parseTaskDueDate = (dueDate?: string) => {
+  if (!dueDate) {
+    return undefined;
+  }
+
+  const dateOnlyMatch = /^(\d{4})-(\d{2})-(\d{2})(?:T00:00(?::00(?:\.000)?)?Z)?$/.exec(dueDate);
+  if (dateOnlyMatch) {
+    const [, year, month, day] = dateOnlyMatch;
+    return new Date(Number(year), Number(month) - 1, Number(day), 12, 0, 0, 0);
+  }
+
+  return new Date(dueDate);
+};
+
 export const createTask = {
   description: 'Create a new task with an optional due date, description, and priority',
   inputSchema: createTaskSchema,
@@ -51,7 +65,7 @@ export const createTask = {
         title: params.title,
         description: params.description,
         priority: params.priority || 'medium',
-        dueDate: params.dueDate ? new Date(params.dueDate) : undefined,
+        dueDate: parseTaskDueDate(params.dueDate),
       },
     });
     return {
@@ -150,7 +164,7 @@ export const updateTask = {
         description: params.description,
         priority: params.priority,
         status: params.status,
-        dueDate: params.dueDate ? new Date(params.dueDate) : undefined,
+        dueDate: parseTaskDueDate(params.dueDate),
       },
     });
     return {
@@ -177,7 +191,7 @@ export const convertNoteToTask = {
         title: note.content.substring(0, 50) + (note.content.length > 50 ? '...' : ''),
         description: note.content,
         priority: params.priority || 'medium',
-        dueDate: params.dueDate ? new Date(params.dueDate) : undefined,
+        dueDate: parseTaskDueDate(params.dueDate),
       },
     });
 

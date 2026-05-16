@@ -43,7 +43,7 @@ async function runTests() {
 
     // 4. Test getNotes
     console.log("\n--- Testing getNotes ---");
-    const getNotesResult = await getNotes.execute({});
+    const getNotesResult = await getNotes.execute();
     console.log("Result:", getNotesResult.success ? "✅ Success" : "❌ Failed");
     console.log("Total notes found:", getNotesResult.notes.length);
 
