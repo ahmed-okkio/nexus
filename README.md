@@ -1,36 +1,101 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Nexus AI Assistant
 
-## Getting Started
+Nexus is a voice-first personal AI assistant built as an extension of the mind. It allows users to capture thoughts, manage tasks, and stay organized through natural, conversational interactions.
 
-First, run the development server:
+**Built for the LOS Hackathon 2026.**
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+---
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## 🌟 The Vision
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Nexus is designed to be ambient. It stays out of your way until you need it, capturing ideas from speech and organizing them into actionable tasks without the friction of traditional forms or complex UIs. It's not just an app; it's a "Neural Interface" for your daily life.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## 🚀 Key Features
 
-## Learn More
+### 🎙️ Voice-First Interaction
+*   **Ambient Listening:** Natural wake-word detection ("Nexus").
+*   **Personalized Greetings:** Dynamic TTS initialization (e.g., "Welcome back, Boss").
+*   **Neural Animation:** A high-fidelity Framer Motion startup sequence and a "breathing" assistant orb.
 
-To learn more about Next.js, take a look at the following resources:
+### 📝 Smart Notes & Tasks
+*   **Conversational Capture:** Dictate notes or create tasks naturally.
+*   **Note-to-Task AI:** The assistant can identify actionable items within a note and convert them into scheduled tasks automatically.
+*   **Task Management:** Fully conversational tracking, updates, and completion.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+### 📊 Intelligence Layer
+*   **Daily Briefing:** A single command to get a summary of your upcoming day, recent notes, and overdue items.
+*   **Smart Reminders:** Proactive alerts based on task deadlines and accumulations.
+*   **Semantic History:** Retrieval of past notes and tasks through conversational queries.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+---
 
-## Deploy on Vercel
+## 🤖 Agentic Engineering (The Build Story)
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+The core challenge of the LOS Hackathon was building the product using an **AI Agent** as the primary developer. Nexus was built entirely through CLI-based interactions with a team of specialized agents.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+### The Specialist Team:
+*   **Gemini CLI:** Our "All-Rounder" and Master Builder. It laid the foundation, created the repo, and handled the complex Next.js/Prisma integrations.
+*   **Codex CLI:** Our Deep Coding Specialist. It excelled at solving the hardest logic puzzles and refining the voice synthesis pipelines.
+*   **Claude Haiku (via Copilot CLI):** Our Strategic Navigator. Used in "Planning Mode" to map out the vision and architectural boundaries from the project brief.
+*   **GitHub CLI (gh):** Used for seamless workflow, branch management, and integration.
+
+### Strategic Paradigms:
+*   **Vertical Slice Architecture:** The project was divided into domain-specific slices (Notes owned by **Groove**, Tasks owned by **Okkio**) with the AI guided by role-specific Markdown instruction manuals (`OKKIO.md`, `GROOVSTER.md`).
+*   **Token Efficiency (Caveman Mode):** To maximize free-tier usage, we utilized "Caveman Mode" with Codex—using ultra-compressed language to stay within context limits while solving deep problems.
+*   **Automated Verification:** We leveraged "Project Memories" to instruct the agents to run the linter and type-checker after every significant change, creating a self-regulating engineering environment.
+*   **Fresh Sessions:** We maintained context hygiene by manually starting new chat windows for discrete tasks, preventing context drift and ensuring high-signal responses.
+
+---
+
+## 🛠️ Technical Stack
+
+*   **Framework:** [Next.js](https://nextjs.org/) (TypeScript)
+*   **Database:** [Prisma](https://www.prisma.io/) with SQLite
+*   **Styling:** [Tailwind CSS](https://tailwindcss.com/)
+*   **Animations:** [Framer Motion](https://www.framer.com/motion/)
+*   **AI Integration:** [Google AI SDK](https://sdk.vercel.ai/docs)
+*   **Voice Synthesis:** Custom Web Speech API & Edge TTS integration
+
+---
+
+## 🏁 Getting Started
+
+### Prerequisites
+*   Node.js 20+
+*   npm
+
+### Installation
+1.  Clone the repository:
+    ```bash
+    git clone https://github.com/your-repo/nexus.git
+    cd nexus
+    ```
+2.  Install dependencies:
+    ```bash
+    npm install
+    ```
+3.  Set up the database:
+    ```bash
+    npx prisma migrate dev --name init
+    ```
+4.  Set up environment variables:
+    Create a `.env` file with your Google AI API Key:
+    ```bash
+    GOOGLE_GENERATIVE_AI_API_KEY=your_key_here
+    ```
+5.  Run the development server:
+    ```bash
+    npm run dev
+    ```
+
+Open [http://localhost:3000](http://localhost:3000) with your browser to experience Nexus.
+
+---
+
+## 👥 Team
+*   **Groove** — Lead / Notes Vertical Slice
+*   **Okkio** — Lead / Tasks Vertical Slice
+
+---
+
+**LOS Hackathon 2026** — *Building something we would actually use.*
