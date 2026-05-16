@@ -47,7 +47,7 @@ export async function POST(req: Request) {
     console.log("Chat API route hit. Processing request...");
 
     const result = streamText({
-      model: google("gemini-flash-lite-latest"),
+      model: google("gemini-flash-latest"),
       messages,
       stopWhen: stepCountIs(5),
       system: `You are Nexus, a personal AI assistant. 

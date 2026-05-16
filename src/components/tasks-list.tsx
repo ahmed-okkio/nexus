@@ -19,8 +19,10 @@ interface Task {
 export function TasksList() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [loading, setLoading] = useState(true);
+  const [focusedTaskId, setFocusedTaskId] = useState<string | null>(null);
   const timeoutsRef = useRef<number[]>([]);
   const tasksRef = useRef<Task[]>([]);
+  const taskElementsRef = useRef<Record<string, HTMLDivElement | null>>({});
 
   const clearPendingAnimations = () => {
     timeoutsRef.current.forEach((timeoutId) => window.clearTimeout(timeoutId));
@@ -87,10 +89,25 @@ export function TasksList() {
       void fetchTasks();
     };
 
+    const handleFocusTask = (event: Event) => {
+      const customEvent = event as CustomEvent<{ id?: string }>;
+      const taskId = customEvent.detail?.id;
+      if (!taskId) return;
+      setFocusedTaskId(taskId);
+      window.setTimeout(() => {
+        taskElementsRef.current[taskId]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 140);
+      window.setTimeout(() => {
+        setFocusedTaskId((current) => (current === taskId ? null : current));
+      }, 2200);
+    };
+
     window.addEventListener('tasks-updated', handleUpdate);
+    window.addEventListener('focus-task', handleFocusTask as EventListener);
     return () => {
       window.clearTimeout(initialLoadTimer);
       window.removeEventListener('tasks-updated', handleUpdate);
+      window.removeEventListener('focus-task', handleFocusTask as EventListener);
       clearPendingAnimations();
     };
   }, [fetchTasks]);
@@ -155,6 +172,9 @@ export function TasksList() {
         {tasks.map(task => (
         <motion.div
           key={task.id}
+          ref={(element) => {
+            taskElementsRef.current[task.id] = element;
+          }}
           layout
           initial={{ opacity: 0, y: 12, scale: 0.98 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -164,7 +184,8 @@ export function TasksList() {
             "group flex items-start gap-4 rounded-2xl border p-4 transition-all hover:-translate-y-0.5 hover:shadow-lg",
             task.status === 'completed'
               ? 'border-zinc-200 bg-zinc-100/50 opacity-80 dark:border-zinc-700 dark:bg-zinc-800/40'
-              : 'border-zinc-200/80 bg-white dark:border-zinc-700 dark:bg-zinc-900/80'
+              : 'border-zinc-200/80 bg-white dark:border-zinc-700 dark:bg-zinc-900/80',
+            focusedTaskId === task.id && "border-blue-400/70 bg-blue-500/10 shadow-[0_0_26px_rgba(96,165,250,0.35)]"
           )}
         >
           <button

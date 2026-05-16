@@ -221,6 +221,13 @@ const getMonthDays = (date: Date) => {
 };
 
 export default function Home() {
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
+  const [userName, setUserName] = useState(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("nexus_user_name") || "";
+    }
+    return "";
+  });
   const [state, setState] = useState<AiState>("idle");
   const [activeNav, setActiveNav] = useState<SidebarItem>("Home");
   const [timeframe, setTimeframe] = useState<Timeframe>("Today");
@@ -237,6 +244,7 @@ export default function Home() {
   const [tasksCache, setTasksCache] = useState<TaskLite[]>([]);
   const [notesCache, setNotesCache] = useState<NoteLite[]>([]);
   const [remindersData, setRemindersData] = useState<SmartRemindersResponse | null>(null);
+  const [selectedCalendarTaskId, setSelectedCalendarTaskId] = useState<string | null>(null);
   const [calendarDate, setCalendarDate] = useState(() => new Date());
   const [reminderTitle, setReminderTitle] = useState("");
   const [reminderDate, setReminderDate] = useState(() => formatInputDate(new Date()));
@@ -384,6 +392,175 @@ export default function Home() {
     setState("idle");
     setSpeechError("");
   };
+
+  const speakReply = useCallback(async (text: string, onFirstAudioReady?: () => void, startDelay = 0) => {
+    if (!speakEnabled || typeof window === "undefined") {
+      return;
+    }
+    const ttsText = normalizeTtsText(text);
+    if (!ttsText) {
+      return;
+    }
+    const chunks = splitForFastTts(ttsText);
+    if (chunks.length === 0) {
+      return;
+    }
+
+    try {
+      let didSignalReady = false;
+      const playChunk = async (chunkText: string) => {
+        const response = await fetch("/api/voice/tts", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text: chunkText }),
+        });
+        if (!response.ok) {
+          throw new Error(`TTS request failed (${response.status})`);
+        }
+        const wavBlob = await response.blob();
+        if (playbackAudioRef.current) {
+          playbackAudioRef.current.pause();
+          playbackAudioRef.current = null;
+        }
+        const audioUrl = URL.createObjectURL(wavBlob);
+        const audio = new Audio(audioUrl);
+        audio.volume = NEXUS_VOICE_VOLUME;
+        if (!didSignalReady) {
+          await new Promise<void>((resolve) => {
+            const markReady = () => {
+              if (!didSignalReady) {
+                didSignalReady = true;
+                onFirstAudioReady?.();
+              }
+              resolve();
+            };
+            if (audio.readyState >= 3) {
+              markReady();
+              return;
+            }
+            audio.oncanplaythrough = () => markReady();
+            audio.onerror = () => resolve();
+          });
+          // Apply initial delay if requested (e.g. to wait for intro transition)
+          if (startDelay > 0) {
+            await new Promise((resolve) => window.setTimeout(resolve, startDelay));
+          }
+        }
+        try {
+          const audioContext = new AudioContext();
+          const analyser = audioContext.createAnalyser();
+          analyser.fftSize = 256;
+          analyser.smoothingTimeConstant = 0.68;
+          const source = audioContext.createMediaElementSource(audio);
+          source.connect(analyser);
+          analyser.connect(audioContext.destination);
+          if (audioContext.state === "suspended") {
+            await audioContext.resume();
+          }
+          ttsAudioContextRef.current?.close().catch(() => {});
+          ttsAudioContextRef.current = audioContext;
+          ttsAnalyserRef.current = analyser;
+          if (ttsPulseRafRef.current) {
+            window.cancelAnimationFrame(ttsPulseRafRef.current);
+          }
+          const bins = new Uint8Array(analyser.frequencyBinCount);
+          const tick = () => {
+            const currentAnalyser = ttsAnalyserRef.current;
+            if (!currentAnalyser) {
+              return;
+            }
+            currentAnalyser.getByteFrequencyData(bins);
+            let sum = 0;
+            for (let i = 0; i < bins.length; i += 1) {
+              sum += bins[i];
+            }
+            const avg = sum / bins.length;
+            const normalized = Math.min(1, avg / 48);
+            const speakingFloor = audio.paused || audio.ended ? 0 : 0.32;
+            setOrbVoicePulse((prev) => prev * 0.14 + Math.max(normalized, speakingFloor) * 0.86);
+            ttsPulseRafRef.current = window.requestAnimationFrame(tick);
+          };
+          tick();
+        } catch {
+          // no-op
+        }
+        playbackAudioRef.current = audio;
+        setOrbVoicePulse(0.3);
+        await new Promise<void>((resolve, reject) => {
+          audio.onended = () => resolve();
+          audio.onerror = () => reject(new Error("Audio playback failed"));
+          void audio.play().catch(() => reject(new Error("Audio playback failed")));
+        });
+        if (ttsPulseRafRef.current) {
+          window.cancelAnimationFrame(ttsPulseRafRef.current);
+          ttsPulseRafRef.current = null;
+        }
+        ttsAnalyserRef.current = null;
+        ttsAudioContextRef.current?.close().catch(() => {});
+        ttsAudioContextRef.current = null;
+        setOrbVoicePulse(0);
+        URL.revokeObjectURL(audioUrl);
+        if (playbackAudioRef.current === audio) {
+          playbackAudioRef.current = null;
+        }
+      };
+
+      for (const chunk of chunks) {
+        await playChunk(chunk);
+      }
+      return;
+    } catch {
+      if (!("speechSynthesis" in window)) {
+        return;
+      }
+      onFirstAudioReady?.();
+      const utterance = new SpeechSynthesisUtterance(ttsText);
+      utterance.rate = 1;
+      utterance.pitch = 1;
+      window.speechSynthesis.cancel();
+      window.speechSynthesis.speak(utterance);
+    }
+  }, [speakEnabled]);
+
+  useEffect(() => {
+    let minTimePassed = false;
+    let audioReady = false;
+
+    const maybeFinish = () => {
+      if (minTimePassed && audioReady) {
+        setIsInitialLoading(false);
+      }
+    };
+
+    // Minimum animation time
+    const timer = window.setTimeout(() => {
+      minTimePassed = true;
+      maybeFinish();
+    }, 2500);
+
+    // Start fetching/preparing greeting almost immediately
+    const greeting = userName ? `Welcome back, ${userName}. How can I help you today?` : "Welcome back. How can I help you today?";
+    
+    // We call speakReply and use its callback to signal readiness
+    // Added 1200ms delay to ensure the exit transition (800ms) is fully complete
+    void speakReply(greeting, () => {
+      audioReady = true;
+      maybeFinish();
+    }, 1200);
+
+
+    // Fallback: if audio fails or takes too long, finish anyway after 5s
+    const fallback = window.setTimeout(() => {
+      audioReady = true;
+      minTimePassed = true;
+      maybeFinish();
+    }, 5000);
+
+    return () => {
+      window.clearTimeout(timer);
+      window.clearTimeout(fallback);
+    };
+  }, [speakReply, userName]);
 
   useEffect(() => {
     const lastAssistant = [...messages].reverse().find((message) => message.role === "assistant");
@@ -535,131 +712,6 @@ export default function Home() {
       setIsCreatingReminder(false);
     }
   }, [fetchSnapshotData, reminderDate, reminderTime, reminderTitle, timeframe]);
-
-  const speakReply = useCallback(async (text: string, onFirstAudioReady?: () => void) => {
-    if (!speakEnabled || typeof window === "undefined") {
-      return;
-    }
-    const ttsText = normalizeTtsText(text);
-    if (!ttsText) {
-      return;
-    }
-    const chunks = splitForFastTts(ttsText);
-    if (chunks.length === 0) {
-      return;
-    }
-
-    try {
-      let didSignalReady = false;
-      const playChunk = async (chunkText: string) => {
-        const response = await fetch("/api/voice/tts", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ text: chunkText }),
-        });
-        if (!response.ok) {
-          throw new Error(`TTS request failed (${response.status})`);
-        }
-        const wavBlob = await response.blob();
-        if (playbackAudioRef.current) {
-          playbackAudioRef.current.pause();
-          playbackAudioRef.current = null;
-        }
-        const audioUrl = URL.createObjectURL(wavBlob);
-        const audio = new Audio(audioUrl);
-        audio.volume = NEXUS_VOICE_VOLUME;
-        if (!didSignalReady) {
-          await new Promise<void>((resolve) => {
-            const markReady = () => {
-              if (!didSignalReady) {
-                didSignalReady = true;
-                onFirstAudioReady?.();
-              }
-              resolve();
-            };
-            if (audio.readyState >= 3) {
-              markReady();
-              return;
-            }
-            audio.oncanplaythrough = () => markReady();
-            audio.onerror = () => resolve();
-          });
-        }
-        try {
-          const audioContext = new AudioContext();
-          const analyser = audioContext.createAnalyser();
-          analyser.fftSize = 256;
-          analyser.smoothingTimeConstant = 0.68;
-          const source = audioContext.createMediaElementSource(audio);
-          source.connect(analyser);
-          analyser.connect(audioContext.destination);
-          if (audioContext.state === "suspended") {
-            await audioContext.resume();
-          }
-          ttsAudioContextRef.current?.close().catch(() => {});
-          ttsAudioContextRef.current = audioContext;
-          ttsAnalyserRef.current = analyser;
-          if (ttsPulseRafRef.current) {
-            window.cancelAnimationFrame(ttsPulseRafRef.current);
-          }
-          const bins = new Uint8Array(analyser.frequencyBinCount);
-          const tick = () => {
-            const currentAnalyser = ttsAnalyserRef.current;
-            if (!currentAnalyser) {
-              return;
-            }
-            currentAnalyser.getByteFrequencyData(bins);
-            let sum = 0;
-            for (let i = 0; i < bins.length; i += 1) {
-              sum += bins[i];
-            }
-            const avg = sum / bins.length;
-            const normalized = Math.min(1, avg / 48);
-            const speakingFloor = audio.paused || audio.ended ? 0 : 0.32;
-            setOrbVoicePulse((prev) => prev * 0.14 + Math.max(normalized, speakingFloor) * 0.86);
-            ttsPulseRafRef.current = window.requestAnimationFrame(tick);
-          };
-          tick();
-        } catch {
-          // no-op
-        }
-        playbackAudioRef.current = audio;
-        setOrbVoicePulse(0.3);
-        await new Promise<void>((resolve, reject) => {
-          audio.onended = () => resolve();
-          audio.onerror = () => reject(new Error("Audio playback failed"));
-          void audio.play().catch(() => reject(new Error("Audio playback failed")));
-        });
-        if (ttsPulseRafRef.current) {
-          window.cancelAnimationFrame(ttsPulseRafRef.current);
-          ttsPulseRafRef.current = null;
-        }
-        ttsAnalyserRef.current = null;
-        ttsAudioContextRef.current?.close().catch(() => {});
-        ttsAudioContextRef.current = null;
-        setOrbVoicePulse(0);
-        URL.revokeObjectURL(audioUrl);
-        if (playbackAudioRef.current === audio) {
-          playbackAudioRef.current = null;
-        }
-      };
-
-      for (const chunk of chunks) {
-        await playChunk(chunk);
-      }
-      return;
-    } catch {
-      if (!("speechSynthesis" in window)) {
-        return;
-      }
-      onFirstAudioReady?.();
-      const utterance = new SpeechSynthesisUtterance(ttsText);
-      utterance.rate = 1;
-      utterance.pitch = 1;
-      window.speechSynthesis.cancel();
-      window.speechSynthesis.speak(utterance);
-    }
-  }, [speakEnabled]);
 
   useEffect(() => {
     if (!assistantReply || !assistantReplyMessageId) {
@@ -971,6 +1023,67 @@ export default function Home() {
 
   return (
     <main className="relative min-h-screen overflow-hidden bg-[#030711] text-white">
+      <AnimatePresence>
+        {isInitialLoading && (
+          <motion.div
+            key="intro"
+            initial={{ opacity: 1 }}
+            exit={{ opacity: 0, scale: 1.05, filter: "blur(10px)" }}
+            transition={{ duration: 0.8, ease: "easeInOut" }}
+            className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-[#030711]"
+          >
+            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(58,91,255,0.15),transparent_70%)]" />
+            
+            <motion.div
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 1, ease: "easeOut" }}
+              className="relative mb-8"
+            >
+              <AssistantOrb state="thinking" voicePulse={0.5} />
+              <motion.div
+                initial={{ opacity: 0, scale: 0.5 }}
+                animate={{ opacity: [0, 1, 0], scale: [0.8, 1.5, 2] }}
+                transition={{ duration: 2, repeat: Infinity, ease: "easeOut" }}
+                className="absolute inset-0 rounded-full border border-blue-400/30"
+              />
+            </motion.div>
+
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.5, duration: 0.8 }}
+              className="text-center"
+            >
+              <h1 className="text-4xl font-bold tracking-[0.2em] text-white sm:text-6xl">NEXUS</h1>
+              <motion.div 
+                initial={{ width: 0 }}
+                animate={{ width: "100%" }}
+                transition={{ delay: 1, duration: 1.2, ease: "easeInOut" }}
+                className="mx-auto mt-4 h-px bg-linear-to-r from-transparent via-blue-400 to-transparent"
+              />
+              <p className="mt-4 text-sm font-medium uppercase tracking-[0.4em] text-blue-100/40">Initializing Neural Interface</p>
+            </motion.div>
+
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 1.8 }}
+              className="absolute bottom-12 flex gap-1"
+            >
+              {[0, 1, 2].map((i) => (
+                <motion.div
+                  key={i}
+                  animate={{ opacity: [0.2, 1, 0.2] }}
+                  transition={{ duration: 1, repeat: Infinity, delay: i * 0.2 }}
+                  className="h-1 w-1 rounded-full bg-blue-400"
+                />
+              ))}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_30%,rgba(58,91,255,0.2),transparent_52%),radial-gradient(circle_at_20%_20%,rgba(178,210,255,0.1),transparent_36%),radial-gradient(circle_at_85%_80%,rgba(172,128,255,0.15),transparent_38%)]" />
       <motion.div
         className="pointer-events-none absolute inset-0 opacity-60"
@@ -1212,12 +1325,41 @@ export default function Home() {
                       </div>
                     </div>
                     <div className="space-y-2 rounded-2xl border border-white/10 bg-black/15 p-3">
-                      <p className="text-xs font-medium uppercase text-blue-100/55">Upcoming</p>
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs font-medium uppercase text-blue-100/55">Upcoming</p>
+                        {selectedCalendarTaskId ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              routeToNav("Tasks");
+                              window.setTimeout(() => {
+                                window.dispatchEvent(
+                                  new CustomEvent("focus-task", {
+                                    detail: { id: selectedCalendarTaskId },
+                                  }),
+                                );
+                              }, 120);
+                            }}
+                            className="rounded-md border border-blue-200/30 bg-blue-300/15 px-2 py-1 text-[10px] font-medium uppercase tracking-[0.1em] text-blue-50 transition hover:bg-blue-300/25"
+                          >
+                            Open in Tasks
+                          </button>
+                        ) : null}
+                      </div>
                       {scheduledTasks.slice(0, 8).map((task) => (
-                        <div key={task.id} className="rounded-xl border border-white/10 bg-white/[0.04] p-3">
+                        <button
+                          key={task.id}
+                          type="button"
+                          onClick={() => setSelectedCalendarTaskId(task.id)}
+                          className={`block w-full rounded-xl border p-3 text-left transition ${
+                            selectedCalendarTaskId === task.id
+                              ? "border-blue-300/50 bg-blue-300/16"
+                              : "border-white/10 bg-white/[0.04] hover:border-white/20"
+                          }`}
+                        >
                           <p className="truncate text-blue-50">{task.title}</p>
                           <p className="text-xs text-blue-100/65">{task.dueDate ? new Date(task.dueDate).toLocaleString() : "No date"}</p>
-                        </div>
+                        </button>
                       ))}
                       {scheduledTasks.length === 0 ? <p>No scheduled reminders yet.</p> : null}
                     </div>
@@ -1271,6 +1413,22 @@ export default function Home() {
               {activeNav === "Settings" && (
                 <div className="space-y-3 rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-blue-100/80">
                   <p className="font-medium text-blue-50">Assistant Settings</p>
+                  
+                  <div className="rounded-xl border border-white/10 bg-black/15 p-3">
+                    <label className="mb-2 block text-xs uppercase tracking-wider text-blue-100/50">Preferred Name</label>
+                    <input
+                      type="text"
+                      value={userName}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setUserName(val);
+                        localStorage.setItem("nexus_user_name", val);
+                      }}
+                      placeholder="Enter your name..."
+                      className="w-full bg-transparent text-blue-50 outline-none placeholder:text-blue-100/30"
+                    />
+                  </div>
+
                   <label className="flex items-center justify-between rounded-xl border border-white/10 bg-black/15 p-3">
                     <span>Read responses aloud</span>
                     <button
@@ -1344,9 +1502,11 @@ export default function Home() {
             >
               <AssistantOrb state={state} compact voicePulse={orbVoicePulse} />
             </button>
-            <div className="mt-2 rounded-xl border border-blue-100/20 bg-[#0a132d]/75 px-3 py-2 text-center text-xs text-blue-50/90 backdrop-blur-xl">
-              {assistantReply || "Nexus is listening..."}
-            </div>
+            {state === "listening" || visibleAssistantReply ? (
+              <div className="mt-2 rounded-xl border border-blue-100/20 bg-[#0a132d]/75 px-3 py-2 text-center text-xs text-blue-50/90 backdrop-blur-xl">
+                {state === "listening" ? "Nexus is listening..." : visibleAssistantReply}
+              </div>
+            ) : null}
           </motion.div>
         ) : null}
       </AnimatePresence>

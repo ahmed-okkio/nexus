@@ -127,6 +127,9 @@
     position: relative;
     isolation: isolate;
     overflow-x: hidden;
+    -webkit-user-select: none;
+    user-select: none;
+    caret-color: transparent;
   }
   body::before {
     content: "";
@@ -154,6 +157,15 @@
   h1, h2, h3, h4 {
     font-family: var(--font-heading);
     letter-spacing: -0.02em;
+  }
+
+  input,
+  textarea,
+  [contenteditable="true"],
+  [contenteditable="plaintext-only"] {
+    -webkit-user-select: text;
+    user-select: text;
+    caret-color: auto;
   }
 }
 
